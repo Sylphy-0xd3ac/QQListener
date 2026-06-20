@@ -40,6 +40,15 @@ class MessageProcessor:
             and any(k in message_text for k in blacklist if k)
         ):
             return None
+
+        whitelist = self.settings.whitelist
+        if (
+            whitelist
+            and isinstance(whitelist, list)
+            and not any(k in message_text for k in whitelist if k)
+        ):
+            return None
+
         important = False
         calling = False
         duration = self.settings.duration_everyone

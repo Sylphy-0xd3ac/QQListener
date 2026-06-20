@@ -107,6 +107,11 @@ class Settings:
         return result if isinstance(result, list) else []
 
     @property
+    def whitelist(self) -> list[str]:
+        result = self.get("WhiteList", [])
+        return result if isinstance(result, list) else []
+
+    @property
     def scan_interval(self) -> float:
         result = self.get("ScanInterval", 0.3)
         return float(result) if isinstance(result, (int, float)) else 0.3

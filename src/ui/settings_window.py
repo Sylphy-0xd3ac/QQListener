@@ -157,6 +157,10 @@ class SettingsWindow(QWidget):
         self.list_black = self._create_list(self.data.get("BlackList", self.settings.blacklist))
         layout.addWidget(self.list_black)
 
+        layout.addWidget(QLabel(self.tr("白名单")))
+        self.list_white = self._create_list(self.data.get("WhiteList", self.settings.whitelist))
+        layout.addWidget(self.list_white)
+
         self.someone_at_me = QCheckBox(self.tr("当 [有人@我] 时将通知优先级设为最高"))
         self.someone_at_me.setChecked(self.data.get("Someone_At_Me", self.settings.someone_at_me))
         self.qq_only = QCheckBox(self.tr("仅监控 QQ 消息（推荐）"))
@@ -813,6 +817,7 @@ class SettingsWindow(QWidget):
                 "Important_Persons": self._get_list(self.list_persons),
                 "Important_Keywords": self._get_list(self.list_keywords),
                 "BlackList": self._get_list(self.list_black),
+                "WhiteList": self._get_list(self.list_white),
                 "Sound_Effect_Normal": self.sound_normal.text(),
                 "Sound_Effect_Important": self.sound_important.text(),
                 "Sound_Calling": self.sound_calling.text(),
