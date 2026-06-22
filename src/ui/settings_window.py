@@ -209,10 +209,10 @@ class SettingsWindow(FluentWindow):
             position=NavigationItemPosition.BOTTOM,
         )
         self.navigationInterface.addItem(
-            "closeInterface",
-            FIF.CLOSE,
-            self.tr("关闭"),
-            onClick=lambda *_: self.close(),
+            "exitInterface",
+            FIF.POWER_BUTTON,
+            self.tr("退出"),
+            onClick=lambda *_: self.signals.exit_app.emit(),
             selectable=False,
             position=NavigationItemPosition.BOTTOM,
         )

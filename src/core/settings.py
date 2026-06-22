@@ -1,5 +1,7 @@
 import json
 import os
+import time
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -101,15 +103,126 @@ class Settings:
         """标记已配置"""
         self._data["Green_Hand"] = False
 
+    @staticmethod
+    def _expand_path(value: Any) -> Path | None:
+        if value is None:
+            return None
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        return Path(os.path.expandvars(os.path.expanduser(text)))
+
+    @staticmethod
+    def _is_dir(path: Path | None) -> bool:
+        if path is None:
+            return False
+        try:
+            return path.is_dir()
+        except OSError:
+            return False
+
+    @classmethod
+    def _is_usable_qq_user_dir(cls, path: Path | None) -> bool:
+        if not cls._is_dir(path):
+            return False
+        return cls._is_dir(path / "nt_qq") if path else False
+
+    @staticmethod
+    def _mtime(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    @classmethod
+    def _latest_numeric_dir(cls, base_path: Path | None) -> Path | None:
+        if not cls._is_dir(base_path):
+            return None
+
+        try:
+            numeric_dirs = [
+                child
+                for child in base_path.iterdir()
+                if child.name.isdigit() and cls._is_dir(child)
+            ]
+        except OSError:
+            return None
+
+        if not numeric_dirs:
+            return None
+
+        usable_dirs = [path for path in numeric_dirs if cls._is_usable_qq_user_dir(path)]
+        return max(usable_dirs or numeric_dirs, key=cls._mtime)
+
+    @classmethod
+    def _candidate_tencent_files_roots(cls, configured_path: Path | None) -> list[Path]:
+        roots: list[Path] = []
+        seen: set[str] = set()
+
+        def add(path: Path | None) -> None:
+            if path is None:
+                return
+            key = str(path)
+            if key not in seen:
+                roots.append(path)
+                seen.add(key)
+
+        if configured_path:
+            if configured_path.name.isdigit():
+                add(configured_path.parent)
+            elif configured_path.name.lower() in {"tencent files", "腾讯文件"}:
+                add(configured_path)
+            else:
+                add(configured_path / "Tencent Files")
+
+        for env_name in ("USERPROFILE", "USERPATH", "HOME"):
+            home = cls._expand_path(os.environ.get(env_name))
+            if home:
+                add(home / "Documents" / "Tencent Files")
+
+        add(Path.home() / "Documents" / "Tencent Files")
+        return roots
+
+    def _resolve_qq_user_dir(self) -> Path | None:
+        configured_path = self._expand_path(self.get("Tencent_Files_Path", ""))
+        user_qq = str(self.get("User_QQ", "") or "").strip()
+        configured_existing_dir: Path | None = None
+
+        configured_candidates: list[Path] = []
+        if configured_path:
+            if user_qq:
+                configured_candidates.append(configured_path / user_qq)
+            configured_candidates.append(configured_path)
+
+        for candidate in configured_candidates:
+            if self._is_usable_qq_user_dir(candidate):
+                return candidate
+
+        for candidate in configured_candidates:
+            if candidate.name.isdigit() and self._is_dir(candidate):
+                configured_existing_dir = candidate
+                break
+
+        for base_path in self._candidate_tencent_files_roots(configured_path):
+            latest_dir = self._latest_numeric_dir(base_path)
+            if latest_dir:
+                return latest_dir
+
+        return configured_existing_dir
+
+    @property
+    def qq_user_dir(self) -> str | None:
+        resolved = self._resolve_qq_user_dir()
+        return str(resolved) if resolved else None
+
     @property
     def thumb_path(self) -> str | None:
-        tencent_path = self.get("Tencent_Files_Path", "")
-        user_qq = self.get("User_QQ", "")
-        if tencent_path and user_qq:
-            import time
-
-            return os.path.join(
-                tencent_path, user_qq, "nt_qq", "nt_data", "Pic", time.strftime("%Y-%m"), "Thumb"
+        qq_user_dir = self._resolve_qq_user_dir()
+        if qq_user_dir:
+            return str(
+                qq_user_dir / "nt_qq" / "nt_data" / "Pic" / time.strftime("%Y-%m") / "Thumb"
             )
         return None
 

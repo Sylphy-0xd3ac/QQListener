@@ -99,13 +99,14 @@ class MessageProcessor:
 
     def _find_new_thumb(self, timeout: int = 5) -> str | None:
         """查找新的缩略图"""
-        thumb_path = self.settings.thumb_path
-        if not thumb_path or not os.path.exists(thumb_path):
-            return None
-
         start_time = time.time()
 
         while time.time() - start_time < timeout:
+            thumb_path = self.settings.thumb_path
+            if not thumb_path or not os.path.exists(thumb_path):
+                time.sleep(0.3)
+                continue
+
             try:
                 files = os.listdir(thumb_path)
                 if not files:
@@ -128,8 +129,12 @@ class MessageProcessor:
                         continue
 
                     # 新文件或被修改的文件
-                    if f not in self.last_file_mtime or self.last_file_mtime[f] != mtime:
-                        self.last_file_mtime[f] = mtime
+                    is_new_or_updated = (
+                        full not in self.last_file_mtime or self.last_file_mtime[full] != mtime
+                    )
+                    if is_new_or_updated:
+                        self.last_file_mtime[full] = mtime
+                        logger.debug("检测到新/更新缩略图: {}", full)
                         return full
             except OSError:
                 logger.exception("读取缩略图目录失败")

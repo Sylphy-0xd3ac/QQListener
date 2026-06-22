@@ -1,0 +1,78 @@
+name: Build packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            package_name: QQListener-windows-x64.zip
+          - name: macos-x64-rosetta
+            os: macos-13
+            package_name: QQListener-macos-x64-rosetta.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip uv
+          uv sync --frozen
+          uv pip install "pyinstaller>=6.10,<7"
+
+      - name: Compile check
+        run: uv run python -m compileall -q src main.py
+
+      - name: Build app
+        run: uv run python scripts/build_app.py
+
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Compress-Archive -Path "dist/QQListener" -DestinationPath "${{ matrix.package_name }}" -Force
+
+      - name: Package macOS artifact
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "dist/QQListener.app" ]; then
+            ditto -c -k --sequesterRsrc --keepParent "dist/QQListener.app" "${{ matrix.package_name }}"
+          else
+            ditto -c -k --sequesterRsrc --keepParent "dist/QQListener" "${{ matrix.package_name }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.package_name }}
+          if-no-files-found: error
