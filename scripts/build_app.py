@@ -32,6 +32,7 @@ def build_command(name: str) -> list[str]:
         "PyInstaller",
         "--noconfirm",
         "--clean",
+        "--onefile",
         "--windowed",
         "--name",
         name,

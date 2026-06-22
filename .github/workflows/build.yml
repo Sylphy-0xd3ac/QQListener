@@ -26,10 +26,10 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-            package_name: QQListener-windows-x64.zip
+            package_name: QQListener-windows-x64.exe
           - name: macos-x64-rosetta
             os: macos-13
-            package_name: QQListener-macos-x64-rosetta.zip
+            package_name: QQListener-macos-x64-rosetta.app.zip
 
     steps:
       - name: Checkout
@@ -57,7 +57,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Compress-Archive -Path "dist/QQListener" -DestinationPath "${{ matrix.package_name }}" -Force
+          Copy-Item "dist/QQListener.exe" "${{ matrix.package_name }}" -Force
 
       - name: Package macOS artifact
         if: runner.os == 'macOS'
@@ -67,7 +67,9 @@ jobs:
           if [ -d "dist/QQListener.app" ]; then
             ditto -c -k --sequesterRsrc --keepParent "dist/QQListener.app" "${{ matrix.package_name }}"
           else
-            ditto -c -k --sequesterRsrc --keepParent "dist/QQListener" "${{ matrix.package_name }}"
+            cp "dist/QQListener" "QQListener-macos-x64-rosetta"
+            chmod +x "QQListener-macos-x64-rosetta"
+            ditto -c -k --sequesterRsrc "QQListener-macos-x64-rosetta" "${{ matrix.package_name }}"
           fi
 
       - name: Upload artifact
