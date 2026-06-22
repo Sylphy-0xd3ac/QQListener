@@ -4,7 +4,7 @@ import os
 import edge_tts
 import pygame
 from loguru import logger
-from PySide6.QtCore import QThread, Signal
+from PySide2.QtCore import QThread, Signal
 
 from src.core.settings import get_settings
 

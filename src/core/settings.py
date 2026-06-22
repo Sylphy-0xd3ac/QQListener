@@ -4,6 +4,8 @@ from typing import Any
 
 from loguru import logger
 
+from src.core.notification_engines import normalize_notification_engine
+
 
 class Settings:
     _instance: "Settings | None" = None
@@ -51,6 +53,22 @@ class Settings:
             logger.exception("保存设置失败")
             return False
 
+    def reload(self) -> bool:
+        """从磁盘重新加载设置，返回配置是否发生变化。"""
+        if not self._settings_file:
+            return False
+
+        old_data = self.get_all()
+        try:
+            with open(self._settings_file, encoding="utf-8") as f:
+                loaded_data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            logger.exception("重新加载设置失败")
+            return False
+
+        self._data = loaded_data if isinstance(loaded_data, dict) else {}
+        return self.get_all() != old_data
+
     def get(self, key: str, default: Any = None) -> Any:
         if not key or not isinstance(key, str):
             return default
@@ -70,6 +88,10 @@ class Settings:
     def get_all(self) -> dict[str, Any]:
         """获取所有设置"""
         return self._data.copy() if self._data else {}
+
+    @property
+    def settings_file(self) -> str:
+        return self._settings_file
 
     def is_first_run(self) -> bool:
         """检查是否是首次运行（未保存过设置）"""
@@ -122,8 +144,54 @@ class Settings:
         return int(result) if isinstance(result, (int, float)) else 3
 
     @property
+    def auto_start(self) -> bool:
+        return bool(self.get("Auto_Start", False))
+
+    @property
     def uia_mode(self) -> bool:
         return bool(self.get("UIAMode", False))
+
+    @property
+    def notification_engine(self) -> str:
+        return normalize_notification_engine(
+            self.get("NotificationEngine", None),
+            legacy_uia=self.uia_mode,
+        )
+
+    @property
+    def onebot_v11_ws_url(self) -> str:
+        result = self.get("OneBotV11_WS_URL", "ws://127.0.0.1:8080/event")
+        return str(result).strip() if result else ""
+
+    @property
+    def onebot_v11_token(self) -> str:
+        result = self.get("OneBotV11_Access_Token", "")
+        return str(result) if result else ""
+
+    @property
+    def http_push_enabled(self) -> bool:
+        return bool(self.get("HTTPPush_Enabled", False))
+
+    @property
+    def http_push_host(self) -> str:
+        result = self.get("HTTPPush_Host", "127.0.0.1")
+        return str(result).strip() if result else "127.0.0.1"
+
+    @property
+    def http_push_port(self) -> int:
+        result = self.get("HTTPPush_Port", 8765)
+        return int(result) if isinstance(result, (int, float)) else 8765
+
+    @property
+    def http_push_path(self) -> str:
+        result = self.get("HTTPPush_Path", "/push")
+        path = str(result).strip() if result else "/push"
+        return path if path.startswith("/") else f"/{path}"
+
+    @property
+    def http_push_token(self) -> str:
+        result = self.get("HTTPPush_Token", "")
+        return str(result) if result else ""
 
     @property
     def qq_only(self) -> bool:
@@ -225,16 +293,6 @@ class Settings:
         return str(result) if result else "xxtsoft QQListener"
 
     @property
-    def theme_setting(self) -> str:
-        result = self.get("Theme_Setting_Combo", "Fusion")
-        return str(result) if result else "Fusion"
-
-    @property
-    def theme_notify(self) -> str:
-        result = self.get("Theme_Notify_Combo", "FluentDark")
-        return str(result) if result else "FluentDark"
-
-    @property
     def sound_normal(self) -> str:
         result = self.get("Sound_Effect_Normal", "asset/notify_sound.mp3")
         return str(result) if result else "asset/notify_sound.mp3"
@@ -243,11 +301,6 @@ class Settings:
     def sound_important(self) -> str:
         result = self.get("Sound_Effect_Important", "asset/important_sound.mp3")
         return str(result) if result else "asset/important_sound.mp3"
-
-    @property
-    def sound_calling(self) -> str:
-        result = self.get("Sound_Calling", "asset/calling_sound.mp3")
-        return str(result) if result else "asset/calling_sound.mp3"
 
     @property
     def language(self) -> str:
@@ -273,15 +326,6 @@ class Settings:
     def notify_message_font(self) -> str:
         result = self.get("Notify_Message_Font", "asset/Font/FZLanTYK.ttf")
         return str(result) if result else "asset/Font/FZLanTYK.ttf"
-
-    @property
-    def override_qss(self) -> bool:
-        return bool(self.get("Override_qss", False))
-
-    @property
-    def override_qss_path(self) -> str:
-        result = self.get("Override_Path", "")
-        return str(result) if result else ""
 
 
 def get_settings() -> Settings:

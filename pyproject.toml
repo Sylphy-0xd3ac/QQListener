@@ -3,22 +3,39 @@ name = "qqlistener"
 version = "0.1.0"
 description = "QQ通知监控软件"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10,<3.11"
 dependencies = [
+    "aiohttp>=3.13.3",
     "edge-tts>=7.2.7",
     "loguru>=0.7.2",
     "psutil>=7.2.2",
     "pygame>=2.6.1",
-    "pyside6>=6.10.2",
+    "pyside2>=5.15.2.1",
+    "pyside2-fluent-widgets>=1.8.7",
+    "uiautomation>=2.0.29; sys_platform == 'win32'",
+    "winsdk>=1.0.0b10; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+winsdk = [
+    "winsdk>=1.0.0b10; sys_platform == 'win32'",
+]
+uia = [
+    "uiautomation>=2.0.29; sys_platform == 'win32'",
+]
+windows = [
+    "winsdk>=1.0.0b10; sys_platform == 'win32'",
+    "uiautomation>=2.0.29; sys_platform == 'win32'",
+]
+system-tts = [
     "pyttsx3>=2.99",
-    "pywin32>=311",
-    "qt-material>=2.17",
-    "uiautomation>=2.0.29",
-    "winsdk>=1.0.0b10",
+]
+win32 = [
+    "pywin32>=311; sys_platform == 'win32'",
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]

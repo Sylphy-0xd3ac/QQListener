@@ -1,7 +1,7 @@
 from loguru import logger
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QAction, QCursor, QIcon
-from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+from PySide2.QtCore import QObject, Signal
+from PySide2.QtGui import QCursor, QIcon
+from PySide2.QtWidgets import QAction, QMenu, QSystemTrayIcon
 
 from src.core.settings import get_settings
 
@@ -30,8 +30,8 @@ class TrayIcon(QObject):
             self._menu = QMenu()
 
             # 设置动作
-            settings_action = QAction("设置", self)
-            settings_action.triggered.connect(self.show_settings_signal.emit)
+            settings_action = QAction("显示窗口", self)
+            settings_action.triggered.connect(lambda *_: self.show_settings_signal.emit())
             self._menu.addAction(settings_action)
 
             # 分隔线
@@ -39,7 +39,7 @@ class TrayIcon(QObject):
 
             # 退出动作
             exit_action = QAction("退出", self)
-            exit_action.triggered.connect(self.exit_signal.emit)
+            exit_action.triggered.connect(lambda *_: self.exit_signal.emit())
             self._menu.addAction(exit_action)
 
             # 连接托盘图标激活信号
@@ -56,8 +56,9 @@ class TrayIcon(QObject):
 
     def _on_activated(self, reason):
         """托盘图标被激活时的处理"""
-        # QSystemTrayIcon.Context 表示右键点击
-        if reason == QSystemTrayIcon.Context:
+        if reason in {QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick, QSystemTrayIcon.MiddleClick}:
+            self.show_settings_signal.emit()
+        elif reason == QSystemTrayIcon.Context:
             self._menu.popup(QCursor.pos())
 
     def destroy(self):

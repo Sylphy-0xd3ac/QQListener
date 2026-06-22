@@ -317,11 +317,6 @@
         <translation>Important alert sound</translation>
     </message>
     <message>
-        <location filename="maingui2.py" line="501"/>
-        <source>呼叫提示音</source>
-        <translation>Call ringtone</translation>
-    </message>
-    <message>
         <location filename="maingui2.py" line="511"/>
         <source>QQListener</source>
         <translation>QQListener</translation>

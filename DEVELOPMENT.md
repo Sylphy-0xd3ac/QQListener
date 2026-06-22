@@ -455,7 +455,7 @@ pyinstaller --onefile --windowed --icon=icon.ico \
 
 ## 相关资源
 
-- [PySide6 文档](https://doc.qt.io/qtforpython/)
+- [PySide2 文档](https://doc.qt.io/qtforpython/)
 - [Windows SDK 通知 API](https://docs.microsoft.com/en-us/windows/apps/design/shell/tiles-and-notifications/)
 - [Edge TTS 文档](https://github.com/rany2/edge-tts)
 - [项目主页](https://xxtsoft.top/support/qqlistener)

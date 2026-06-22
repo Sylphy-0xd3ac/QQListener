@@ -1,19 +1,24 @@
 import sys
+import tempfile
+from pathlib import Path
 
 import pygame
-
-# from loguru import logger
-from PySide6.QtCore import QTranslator
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMessageBox
+from loguru import logger
+from PySide2.QtCore import QFileSystemWatcher, QTimer, QTranslator
+from PySide2.QtGui import QIcon
+from PySide2.QtWidgets import QApplication
 
 from src.core.logging import setup_logging
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.core.worker import NotificationWorker
+from src.ui.fluent_dialog import show_fluent_message
 from src.ui.notify_manager import get_notify_manager
 from src.ui.settings_window import SettingsWindow
 from src.ui.tray_icon import TrayIcon
+
+
+APP_ICON_PATH = Path(__file__).resolve().parents[2] / "icon.ico"
 
 
 class QQListenerApp:
@@ -26,6 +31,9 @@ class QQListenerApp:
         self.tray_icon: TrayIcon | None = None
         self.translator: QTranslator | None = None
         self.notify_manager = get_notify_manager()
+        self.settings_watcher: QFileSystemWatcher | None = None
+        self.settings_reload_timer: QTimer | None = None
+        self._macos_dock_icon_image = None
 
     def initialize(self) -> bool:
         setup_logging()
@@ -36,14 +44,15 @@ class QQListenerApp:
             logger.exception("初始化音频失败")
 
         self.app = QApplication(sys.argv)
+        self._set_application_icon()
         self.app.setQuitOnLastWindowClosed(False)
 
         self._load_translator()
+        self._watch_settings_file()
 
         self._connect_signals()
 
-        self.worker = NotificationWorker()
-        self.worker.notification_ready.connect(self._on_notification_ready)
+        self.worker = self._create_worker()
 
         self.tray_icon = TrayIcon()
         self.tray_icon.show_settings_signal.connect(self.show_settings)
@@ -53,6 +62,49 @@ class QQListenerApp:
             logger.error("创建托盘图标失败")
 
         return True
+
+    def _set_application_icon(self):
+        if not self.app:
+            return
+
+        icon = QIcon(str(APP_ICON_PATH))
+        if icon.isNull():
+            logger.warning("应用图标加载失败: {}", APP_ICON_PATH)
+            return
+
+        self.app.setWindowIcon(icon)
+        self._set_macos_dock_icon(icon)
+
+    def _set_macos_dock_icon(self, icon: QIcon):
+        if sys.platform != "darwin":
+            return
+
+        try:
+            from AppKit import NSApplication, NSImage
+
+            pixmap = icon.pixmap(512, 512)
+            if pixmap.isNull():
+                pixmap = icon.pixmap(256, 256)
+
+            image = None
+            if not pixmap.isNull():
+                dock_icon_path = Path(tempfile.gettempdir()) / "qqlistener-dock-icon.png"
+                if pixmap.save(str(dock_icon_path), "PNG"):
+                    image = NSImage.alloc().initWithContentsOfFile_(str(dock_icon_path))
+                else:
+                    logger.warning("保存 macOS Dock 图标失败: {}", dock_icon_path)
+
+            if image is None or not image.isValid():
+                image = NSImage.alloc().initWithContentsOfFile_(str(APP_ICON_PATH))
+
+            if image is None or not image.isValid():
+                logger.warning("macOS Dock 图标加载失败")
+                return
+
+            NSApplication.sharedApplication().setApplicationIconImage_(image)
+            self._macos_dock_icon_image = image
+        except Exception:
+            logger.exception("设置 macOS Dock 图标失败")
 
     def _load_translator(self):
         lang = self.settings.language
@@ -64,6 +116,41 @@ class QQListenerApp:
     def _connect_signals(self):
         self.signals.show_settings.connect(self.show_settings)
         self.signals.exit_app.connect(self.exit)
+        self.signals.settings_changed.connect(self._on_settings_changed)
+
+    def _watch_settings_file(self):
+        if not self.app:
+            return
+
+        self.settings_watcher = QFileSystemWatcher(self.app)
+        self.settings_watcher.fileChanged.connect(self._on_settings_file_changed)
+
+        self.settings_reload_timer = QTimer(self.app)
+        self.settings_reload_timer.setSingleShot(True)
+        self.settings_reload_timer.timeout.connect(self._reload_settings_file)
+
+        self._ensure_settings_watch_path()
+
+    def _settings_file_path(self) -> str:
+        return str(Path(self.settings.settings_file).resolve())
+
+    def _ensure_settings_watch_path(self):
+        if not self.settings_watcher:
+            return
+
+        settings_path = self._settings_file_path()
+        if Path(settings_path).exists() and settings_path not in self.settings_watcher.files():
+            self.settings_watcher.addPath(settings_path)
+
+    def _on_settings_file_changed(self, _path: str):
+        if self.settings_reload_timer:
+            self.settings_reload_timer.start(250)
+
+    def _reload_settings_file(self):
+        if self.settings.reload():
+            logger.info("配置文件已从磁盘重新加载")
+            self._hot_reload_settings()
+        self._ensure_settings_watch_path()
 
     def run(self):
         if not self.initialize():
@@ -73,7 +160,7 @@ class QQListenerApp:
         if self.settings.is_first_run():
             if self.settings_window is None:
                 self.settings_window = SettingsWindow()
-            QMessageBox.information(
+            show_fluent_message(
                 self.settings_window,
                 self.settings_window.tr("你是新来的吧？"),
                 self.settings_window.tr(
@@ -83,21 +170,68 @@ class QQListenerApp:
             self.show_settings()
         if self.worker:
             self.worker.start()
-        exit_code = self.app.exec() if self.app else 1
+        exit_code = self.app.exec_() if self.app else 1
         self.cleanup()
         sys.exit(exit_code)
 
     def show_settings(self):
-        if self.settings_window is None or not self.settings_window.isVisible():
-            self.settings_window = SettingsWindow()
-            self.settings_window.setWindowIcon(QIcon("icon.ico"))
-            self.settings_window.show()
-        else:
+        try:
+            if self.settings_window is None:
+                self.settings_window = SettingsWindow()
+                self.settings_window.setWindowIcon(QIcon(str(APP_ICON_PATH)))
+
+            self.settings_window.showNormal()
             self.settings_window.raise_()
             self.settings_window.activateWindow()
+            handle = self.settings_window.windowHandle()
+            if handle:
+                handle.requestActivate()
+            logger.info("设置窗口已显示")
+        except RuntimeError:
+            logger.warning("设置窗口对象失效，正在重建")
+            self.settings_window = SettingsWindow()
+            self.settings_window.setWindowIcon(QIcon(str(APP_ICON_PATH)))
+            self.settings_window.showNormal()
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
+        except Exception:
+            logger.exception("显示设置窗口失败")
 
     def _on_notification_ready(self, data: dict):
         self.push_notification(data)
+
+    def _create_worker(self) -> NotificationWorker:
+        worker = NotificationWorker()
+        worker.notification_ready.connect(self._on_notification_ready)
+        return worker
+
+    def _on_settings_changed(self):
+        logger.info("设置已变更，正在热加载配置")
+        self._hot_reload_settings()
+
+    def _hot_reload_settings(self):
+        if self.settings_window:
+            self.settings_window.refresh_home()
+
+        self._restart_worker()
+        self._ensure_settings_watch_path()
+
+    def _restart_worker(self):
+        old_worker = self.worker
+        if old_worker:
+            try:
+                old_worker.notification_ready.disconnect(self._on_notification_ready)
+            except RuntimeError:
+                pass
+
+            stopped = old_worker.stop()
+            if stopped:
+                old_worker.deleteLater()
+            else:
+                old_worker.finished.connect(old_worker.deleteLater)
+
+        self.worker = self._create_worker()
+        self.worker.start()
 
     def push_notification(self, data: dict):
         try:

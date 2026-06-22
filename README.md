@@ -3,8 +3,8 @@
 > 让每一条重要通知都能被听见 - 班级群消息监听器
 > 本程序由 [@HxAbCd](https://0xabcd.dev) 使用 AI 重构，代码结构已发生较大变化
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![PySide6](https://img.shields.io/badge/PySide6-6.10+-green.svg)](https://doc.qt.io/qtforpython/)
+[![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://python.org)
+[![PySide2](https://img.shields.io/badge/PySide2-5.15+-green.svg)](https://doc.qt.io/qtforpython/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![NFZX](https://img.shields.io/badge/株洲市南方中学-参赛作品+-blue.svg)](http://jyt.hunan.gov.cn/sjyt/dhjyg/)
 
@@ -13,7 +13,7 @@
 - **极速响应** - 底层采用原生 WinSDK 接口，低延迟捕捉每一条群消息
 - **智能播报** - 集成 Edge-TTS 神经网络语音，AI帮你催作业
 - **多级控制** - 智能识别一般、重要、紧急事件，支持分级通知管理和消息过滤
-- **界面美观** - 纯正 PySide6 开发，采用 Fluent Design 风格，适配班级大屏
+- **界面美观** - 纯正 PySide2 开发，采用 Fluent Design 风格，适配班级大屏
 - **极简配置** - 自动适配大多数 QQ 版本，JSON 配置文件支持高度自定义
 - **安全无虞** - 本地化数据处理，不上传隐私信息，代码完全透明可见
 
@@ -48,8 +48,10 @@ QQListener 支持两种消息捕获模式：
 
 | 模式 | 说明 | 推荐度 |
 |------|------|--------|
+| **自动选择** | 优先尝试 WinSDK，失败后尝试 UIA；都不可用时保持程序运行但不监听 | ⭐⭐⭐⭐⭐ |
 | **WinSDK 模式** | 通过监听 Windows 通知中心（Toast）实现，功耗极低，几乎不占资源 | ⭐⭐⭐⭐⭐ |
 | **UIA 模式** | 通过 UI 自动化技术直接从窗口元素获取消息，识别准确率较低 | ⭐⭐ |
+| **空跑模式** | 不加载任何 Windows 监听依赖，仅用于先启动托盘和设置界面 | - |
 
 ### 重要功能设置
 
@@ -102,6 +104,26 @@ QQListener 支持两种消息捕获模式：
 此项目使用了 AI 参与开发，并借助其对此项目进行过重构。
 
 如果你是开发者，想要参与项目开发或进行二次开发，请查看 [DEVELOPMENT.md](DEVELOPMENT.md) 获取详细的开发指南。
+
+### 依赖安装
+
+Windows 下 `uv sync` 会自动安装 WinSDK 和 UIA 通知监听引擎依赖；macOS/Linux 会自动跳过这些 Windows 专用依赖。PySide2 仅支持 Python 3.10，且 PyPI 轮子主要覆盖 Windows、x86_64 Linux 和 Intel macOS。
+
+```bash
+uv sync
+uv sync --extra system-tts
+```
+
+Apple Silicon macOS 需要使用 Rosetta/x86_64 Python 3.10：
+
+```bash
+uv python install cpython-3.10.17-macos-x86_64-none
+arch -x86_64 ~/.local/share/uv/python/cpython-3.10.17-macos-x86_64-none/bin/python3.10 -m venv .venv
+arch -x86_64 .venv/bin/python -m pip install -e .
+```
+
+- `system-tts`: 安装 `pyttsx3` 系统 TTS 后备引擎
+- `win32`: 单独安装 `pywin32`
 
 ## 📄 许可证
 

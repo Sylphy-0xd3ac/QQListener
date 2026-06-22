@@ -3,7 +3,7 @@ import sys
 
 import pygame
 from loguru import logger
-from PySide6.QtCore import (
+from PySide2.QtCore import (
     QEasingCurve,
     QPropertyAnimation,
     Qt,
@@ -11,37 +11,37 @@ from PySide6.QtCore import (
     QUrl,
     QVariantAnimation,
 )
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPixmap
-from PySide6.QtWidgets import (
+from PySide2.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPixmap
+from PySide2.QtWidgets import (
     QApplication,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
+from qfluentwidgets import PrimaryPushButton, PushButton
 
 from src.core.settings import get_settings
 from src.utils.tts import TTSManager
 
 PRIORITY_STYLES = {
     0: {
-        "bg_color": "rgba(67, 53, 25, 255)",
-        "text_color": "white",
+        "accent_rgb": "0, 120, 212",
+        "text_color": "#202020",
         "overlay": "rgba(0, 0, 0, 120)",
     },
     1: {
-        "bg_color": "rgba(43, 43, 43, 255)",
-        "text_color": "white",
-        "overlay": "rgba(0, 0, 0, 80)",
+        "accent_rgb": "96, 94, 92",
+        "text_color": "#202020",
+        "overlay": "rgba(0, 0, 0, 96)",
     },
     2: {
-        "bg_color": "rgba(43, 43, 43, 255)",
-        "text_color": "white",
-        "overlay": "rgba(0, 0, 0, 0)",
+        "accent_rgb": "96, 94, 92",
+        "text_color": "#202020",
+        "overlay": "rgba(0, 0, 0, 80)",
     },
 }
 
@@ -56,12 +56,12 @@ class FilePreview(QFrame):
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("""
             #FileBox {
-                background-color: rgba(255, 255, 255, 40);
-                border-radius: 4px;
-                border: 1px solid rgba(255, 255, 255, 20);
+                background-color: #f7f7f7;
+                border-radius: 6px;
+                border: 1px solid #e5e5e5;
             }
             #FileBox:hover {
-                background-color: rgba(255, 255, 255, 60);
+                background-color: #f0f6ff;
             }
             QLabel { background: transparent; border: none; }
         """)
@@ -78,12 +78,12 @@ class FilePreview(QFrame):
             )
         else:
             self.icon_label.setText("📄")
-            self.icon_label.setStyleSheet("font-size: 18px; color: white;")
+            self.icon_label.setStyleSheet("font-size: 18px; color: #202020;")
 
         # 文件名逻辑
         self.file_label = QLabel(os.path.basename(file_path))
         self.file_label.setFont(QFont("Segoe UI Variable", 11))
-        self.file_label.setStyleSheet("color: white; background: transparent;")
+        self.file_label.setStyleSheet("color: #202020; background: transparent;")
 
         layout.addWidget(self.icon_label)
         layout.addWidget(self.file_label)
@@ -105,9 +105,9 @@ class ThumbPreview(QFrame):
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("""
             #ThumbBox {
-                background-color: rgba(255, 255, 255, 40);
-                border-radius: 4px;
-                border: 1px solid rgba(255, 255, 255, 20);
+                background-color: #f7f7f7;
+                border-radius: 6px;
+                border: 1px solid #e5e5e5;
             }
             QLabel { background: transparent; border: none; }
         """)
@@ -213,19 +213,22 @@ class NotifyWindow(QWidget):
         # 消息容器（动态高度）
         self.bg_widget = QWidget(self)
         self.bg_widget.setObjectName("BgWidget")
-        self.bg_widget.setFixedWidth(500)
-        if style:
-            self.bg_widget.setStyleSheet(f"""
-                QWidget {{
-                    background-color: {style["bg_color"]};
-                    border-radius: 4px;
-                    border: 1px solid rgba(58, 58, 58, 255);
-                }}
-            """)
+        self.bg_widget.setFixedWidth(560)
+        self.bg_widget.setStyleSheet("""
+            #BgWidget {
+                background-color: white;
+                border-radius: 8px;
+                border: 1px solid #d9d9d9;
+            }
+            #BgWidget QLabel {
+                background: transparent;
+                border: none;
+            }
+        """)
 
         self.main_layout = QVBoxLayout(self.bg_widget)
-        self.main_layout.setContentsMargins(30, 30, 30, 30)
-        self.main_layout.setSpacing(15)
+        self.main_layout.setContentsMargins(36, 32, 36, 28)
+        self.main_layout.setSpacing(16)
 
         # 发送人
         label_sender = QLabel(f"{self.data.get('Sender', '系统通知')}")
@@ -236,12 +239,12 @@ class NotifyWindow(QWidget):
                 QFont.Bold,
             )
         )
-        label_sender.setStyleSheet("color: white; border: none; background: transparent;")
+        label_sender.setStyleSheet("color: #111111; border: none; background: transparent;")
         self.main_layout.addWidget(label_sender)
 
         # 消息内容
         label_msg = QLabel(self.data.get("Message", ""))
-        label_msg.setStyleSheet("color: white; border: none; background: transparent;")
+        label_msg.setStyleSheet("color: #202020; border: none; background: transparent;")
         label_msg.setWordWrap(True)
         label_msg.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         label_msg.setFont(self._get_font(self.msg_family, 13))
@@ -265,11 +268,13 @@ class NotifyWindow(QWidget):
 
         # 按钮组
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        btn_layout.setSpacing(12)
 
-        self.btn_ok = self._create_button(self.data.get("OK_btn", "确认"), self.settings.icon_ok)
+        self.btn_ok = self._create_button(
+            self.data.get("OK_btn", "确认"), self.settings.icon_ok, primary=True
+        )
         self.btn_cancel = self._create_button(
-            self.data.get("Cancel_btn", "关闭"), self.settings.icon_cancel
+            self.data.get("Cancel_btn", "取消"), self.settings.icon_cancel
         )
 
         btn_layout.addWidget(self.btn_ok)
@@ -280,7 +285,7 @@ class NotifyWindow(QWidget):
         if self.settings.notify_label:
             notify_label = QLabel(self.settings.notify_label)
             notify_label.setStyleSheet(
-                "font-size: 12px; color: rgba(255, 255, 255, 100); background: none; border: none;"
+                "font-size: 12px; color: #707070; background: none; border: none;"
             )
             self.main_layout.addWidget(notify_label)
 
@@ -301,30 +306,30 @@ class NotifyWindow(QWidget):
         """获取字体"""
         return QFont(family, size, weight)
 
-    def _create_button(self, text, icon_path):
+    def _create_button(self, text, icon_path, primary=False):
         """创建按钮"""
-        btn = QPushButton(text)
+        btn = PrimaryPushButton() if primary else PushButton()
+        btn.setText(text)
         if icon_path and os.path.exists(icon_path):
-            btn.setIcon(QIcon(icon_path))
-        btn.setFixedHeight(38)
-        btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 30);
-                border: solid rgba(35, 35, 35, 255) 1px;
-                color: white;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: 500;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 50);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 20);
-            }
-        """)
+            btn.setIcon(QIcon(icon_path) if primary else self._tinted_icon(icon_path, QColor(0, 0, 0)))
+        btn.setFixedHeight(40)
+        btn.setMinimumWidth(160)
         return btn
+
+    def _tinted_icon(self, icon_path: str, color: QColor) -> QIcon:
+        pixmap = QPixmap(icon_path)
+        if pixmap.isNull():
+            return QIcon(icon_path)
+
+        tinted = QPixmap(pixmap.size())
+        tinted.fill(Qt.transparent)
+
+        painter = QPainter(tinted)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(tinted.rect(), color)
+        painter.end()
+        return QIcon(tinted)
 
     def start_calling_effect(self):
         """启动呼叫动画效果"""
@@ -335,8 +340,7 @@ class NotifyWindow(QWidget):
         if not style:
             return
 
-        # 提取基础颜色的RGB部分
-        base_color_rgb = ",".join(style["bg_color"].split(",")[:3]).replace("rgba(", "")
+        accent_rgb = style["accent_rgb"]
 
         self.calling_anim = QVariantAnimation(self)
         self.calling_anim.setDuration(duration)
@@ -349,9 +353,13 @@ class NotifyWindow(QWidget):
         def update_bg(val):
             self.bg_widget.setStyleSheet(f"""
                 #BgWidget {{
-                    background-color: rgba({base_color_rgb}, {int(val)});
-                    border-radius: 4px;
-                    border: 1px solid rgba(255, 255, 255, {int(val / 2)});
+                    background-color: white;
+                    border-radius: 8px;
+                    border: 2px solid rgba({accent_rgb}, {int(val)});
+                }}
+                #BgWidget QLabel {{
+                    background: transparent;
+                    border: none;
                 }}
             """)
 
@@ -408,7 +416,7 @@ class NotifyWindow(QWidget):
     def _play_sound(self):
         try:
             if self.data.get("Calling"):
-                sound_file = self.settings.sound_calling
+                sound_file = self.settings.sound_important
             elif self.data.get("Priority") == 0:
                 sound_file = self.settings.sound_important
             else:
