@@ -163,7 +163,10 @@ class NotifyWindow(QWidget):
         self.duration = data.get("Duration", 5000)
         self.animations = []
         self.font_cache = {}
-        self.tts_manager = TTSManager()
+        self._auto_close_requested = False
+        self._closing = False
+        self.tts_manager = TTSManager(self)
+        self.tts_manager.finished.connect(self._on_tts_finished)
 
         self._load_fonts()
         self.init_ui()
@@ -299,7 +302,7 @@ class NotifyWindow(QWidget):
         )
 
         self.btn_ok.clicked.connect(self.on_ok)
-        self.btn_cancel.clicked.connect(self.close_animation)
+        self.btn_cancel.clicked.connect(lambda *_: self.close_animation())
         self.bg_widget.raise_()
 
     def _get_font(self, family, size, weight=QFont.Normal):
@@ -393,13 +396,32 @@ class NotifyWindow(QWidget):
 
         # 自动关闭时钟
         if self.duration > 0:
-            QTimer.singleShot(self.duration, self.close_animation)
+            QTimer.singleShot(self.duration, self._request_auto_close)
 
-    def close_animation(self):
-        try:
-            pygame.mixer.stop()
-        except Exception:
-            logger.exception("停止音效失败")
+    def _request_auto_close(self):
+        if self._closing:
+            return
+        if self.tts_manager.is_active:
+            self._auto_close_requested = True
+            return
+        self.close_animation()
+
+    def _on_tts_finished(self):
+        if self._auto_close_requested and not self._closing:
+            self.close_animation()
+
+    def close_animation(self, *_args, stop_audio: bool = True):
+        if self._closing:
+            return
+
+        self._closing = True
+        self._auto_close_requested = False
+        if stop_audio:
+            self.tts_manager.stop()
+            try:
+                pygame.mixer.stop()
+            except Exception:
+                logger.exception("停止音效失败")
 
         anim = QPropertyAnimation(self, b"windowOpacity")
         anim.setDuration(300)
@@ -435,6 +457,10 @@ class NotifyWindow(QWidget):
         message = self.data.get("Message", "")
         if message:
             self.tts_manager.speak(message)
+
+    def closeEvent(self, event):
+        self.tts_manager.stop(emit_finished=False)
+        super().closeEvent(event)
 
 
 def show_notification(data: dict) -> NotifyWindow:

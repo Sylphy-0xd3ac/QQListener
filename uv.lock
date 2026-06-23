@@ -246,6 +246,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pycaw"
+version = "20251023"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "comtypes" },
+    { name = "psutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/81/19181e3118a503f94d8689fbbed60616e85d08cee3a295c11245ae73018f/pycaw-20251023.tar.gz", hash = "sha256:19935b92eb5efc3f3ea5ee8a2d37ca49009e9dc00f83d067b74b9922e84b5b3b", size = 23421, upload-time = "2025-10-23T18:26:45.087Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/bc/f60c1622da5c53770c2d62457b5b6fc9623ab41b9d276269b857cd337e22/pycaw-20251023-py3-none-any.whl", hash = "sha256:ef06d234a2fe3c175925a2a8c7ed8824e450851014fdb7d900af1b56ce422d4e", size = 25849, upload-time = "2025-10-23T18:26:43.955Z" },
+]
+
+[[package]]
 name = "pycocoa"
 version = "25.12.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2669,6 +2682,7 @@ dependencies = [
     { name = "edge-tts" },
     { name = "loguru" },
     { name = "psutil" },
+    { name = "pycaw", marker = "sys_platform == 'win32'" },
     { name = "pygame" },
     { name = "pyside2" },
     { name = "pyside2-fluent-widgets" },
@@ -2687,6 +2701,7 @@ win32 = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
 windows = [
+    { name = "pycaw", marker = "sys_platform == 'win32'" },
     { name = "uiautomation", marker = "sys_platform == 'win32'" },
     { name = "winsdk", marker = "sys_platform == 'win32'" },
 ]
@@ -2700,6 +2715,8 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=7.2.7" },
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "psutil", specifier = ">=7.2.2" },
+    { name = "pycaw", marker = "sys_platform == 'win32'", specifier = ">=20240210" },
+    { name = "pycaw", marker = "sys_platform == 'win32' and extra == 'windows'", specifier = ">=20240210" },
     { name = "pygame", specifier = ">=2.6.1" },
     { name = "pyside2", specifier = ">=5.15.2.1" },
     { name = "pyside2-fluent-widgets", specifier = ">=1.8.7" },

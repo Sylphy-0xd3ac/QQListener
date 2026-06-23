@@ -112,6 +112,7 @@ from src.core.notification_engines import (
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.ui.fluent_dialog import show_fluent_message
+from src.utils.tts import set_system_volume_max
 
 
 class SettingsWindow(FluentWindow):
@@ -1088,6 +1089,7 @@ class SettingsWindow(FluentWindow):
 
     def _on_edge_test(self):
         """Edge TTS测试"""
+        set_system_volume_max()
         if self.edge_tts.isChecked():
             self._edge_tts_engine(
                 TEXT=self.edge_test_text.text(),

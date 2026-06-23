@@ -74,11 +74,14 @@ def build_command(name: str) -> list[str]:
         _add_hidden_imports(
             command,
             [
+                "comtypes",
+                "pycaw.pycaw",
                 "uiautomation",
                 "winsdk.windows.ui.notifications",
                 "winsdk.windows.ui.notifications.management",
             ],
         )
+        command.extend(["--collect-submodules", "comtypes", "--collect-submodules", "pycaw"])
     elif sys.platform == "darwin":
         _add_hidden_imports(command, ["AppKit", "Foundation", "objc"])
 

@@ -12,6 +12,7 @@ dependencies = [
     "pygame>=2.6.1",
     "pyside2>=5.15.2.1",
     "pyside2-fluent-widgets>=1.8.7",
+    "pycaw>=20240210; sys_platform == 'win32'",
     "uiautomation>=2.0.29; sys_platform == 'win32'",
     "winsdk>=1.0.0b10; sys_platform == 'win32'",
 ]
@@ -24,6 +25,7 @@ uia = [
     "uiautomation>=2.0.29; sys_platform == 'win32'",
 ]
 windows = [
+    "pycaw>=20240210; sys_platform == 'win32'",
     "winsdk>=1.0.0b10; sys_platform == 'win32'",
     "uiautomation>=2.0.29; sys_platform == 'win32'",
 ]
