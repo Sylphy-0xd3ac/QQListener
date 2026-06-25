@@ -28,6 +28,10 @@ jobs:
             os: windows-latest
             qt_api: pyside2
             package_name: QQListener-windows-x64-pyside2.exe
+          - name: macos-intel-pyside2
+            os: macos-15-intel
+            qt_api: pyside2
+            package_name: QQListener-macos-intel-pyside2.app.zip
           - name: windows-x64-pyside6
             os: windows-latest
             qt_api: pyside6
@@ -67,10 +71,21 @@ jobs:
             "pygame>=2.6.1" \
             "PySide2>=5.15.2.1,<5.16" \
             "PySide2-Fluent-Widgets>=1.8.7" \
-            "pycaw>=20240210" \
-            "uiautomation>=2.0.29" \
-            "winsdk>=1.0.0b10" \
+            "pycaw>=20240210; sys_platform == 'win32'" \
+            "uiautomation>=2.0.29; sys_platform == 'win32'" \
+            "winsdk>=1.0.0b10; sys_platform == 'win32'" \
             "pyinstaller>=6.10,<7"
+          uv pip uninstall -y \
+            PySide6 \
+            PySide6-Addons \
+            PySide6-Essentials \
+            PySide6-Fluent-Widgets \
+            PySideSix-Frameless-Window || true
+          uv pip list | grep -Ei "pyside|fluent|frameless" || true
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: uv pip install "pyobjc-framework-Cocoa>=10"
 
       - name: Compile check
         run: uv run python -m compileall -q src main.py scripts
@@ -79,9 +94,24 @@ jobs:
         env:
           QQLISTENER_QT_API: ${{ matrix.qt_api }}
         run: |
-          uv run python -c "from src.ui.qt_compat import QT_API; import src.ui.fluent_compat; assert QT_API == '${{ matrix.qt_api }}'; print(QT_API)"
+          uv run python - <<'PY'
+          import importlib.util
+          import os
+
+          from src.ui.qt_compat import QT_API
+          import src.ui.fluent_compat
+
+          expected = os.environ["QQLISTENER_QT_API"]
+          forbidden = "PySide6" if expected == "pyside2" else "PySide2"
+          assert QT_API == expected, (QT_API, expected)
+          if importlib.util.find_spec(forbidden):
+              raise SystemExit(f"{forbidden} must not be installed in {expected} job")
+          print(QT_API)
+          PY
 
       - name: Build app
+        env:
+          QQLISTENER_QT_API: ${{ matrix.qt_api }}
         run: uv run python scripts/build_app.py --qt-api ${{ matrix.qt_api }}
 
       - name: Package Windows artifact

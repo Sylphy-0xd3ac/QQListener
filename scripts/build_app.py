@@ -34,6 +34,11 @@ def _add_hidden_imports(command: list[str], imports: list[str]) -> None:
         command.extend(["--hidden-import", module_name])
 
 
+def _add_excluded_imports(command: list[str], imports: list[str]) -> None:
+    for module_name in imports:
+        command.extend(["--exclude-module", module_name])
+
+
 @contextmanager
 def write_ui_qt_api(qt_api: str):
     original = UI_INIT_PATH.read_text(encoding="utf-8") if UI_INIT_PATH.exists() else None
@@ -52,6 +57,7 @@ def write_ui_qt_api(qt_api: str):
 
 def build_command(name: str, qt_api: str) -> list[str]:
     qt_binding = "PySide2" if qt_api == "pyside2" else "PySide6"
+    excluded_qt_binding = "PySide6" if qt_api == "pyside2" else "PySide2"
     command = [
         sys.executable,
         "-m",
@@ -89,6 +95,16 @@ def build_command(name: str, qt_api: str) -> list[str]:
         "--hidden-import",
         "pygame",
     ]
+    _add_excluded_imports(
+        command,
+        [
+            excluded_qt_binding,
+            f"{excluded_qt_binding}.QtCore",
+            f"{excluded_qt_binding}.QtGui",
+            f"{excluded_qt_binding}.QtWidgets",
+            f"{excluded_qt_binding}.QtSvg",
+        ],
+    )
 
     icon_path = PROJECT_ROOT / "icon.ico"
     if icon_path.exists() and sys.platform == "win32":
