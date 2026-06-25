@@ -103,14 +103,14 @@ jobs:
           uv pip list | grep -Ei "pyside|fluent|frameless" || true
 
       - name: Compile check
-        run: uv run python -m compileall -q src main.py scripts
+        run: uv run --no-sync python -m compileall -q src main.py scripts
 
       - name: Qt import check
         shell: bash
         env:
           QQLISTENER_QT_API: ${{ matrix.qt_api }}
         run: |
-          uv run python - <<'PY'
+          uv run --no-sync python - <<'PY'
           import importlib.util
           import os
 
@@ -129,7 +129,7 @@ jobs:
       - name: Build app
         env:
           QQLISTENER_QT_API: ${{ matrix.qt_api }}
-        run: uv run python scripts/build_app.py --qt-api ${{ matrix.qt_api }}
+        run: uv run --no-sync python scripts/build_app.py --qt-api ${{ matrix.qt_api }}
 
       - name: Package Windows artifact
         if: runner.os == 'Windows'
