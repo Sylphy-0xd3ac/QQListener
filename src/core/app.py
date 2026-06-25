@@ -6,9 +6,6 @@ import tempfile
 
 import pygame
 from loguru import logger
-from PySide6.QtCore import QFileSystemWatcher, QTimer, QTranslator
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
 
 from src.core.logging import setup_logging
 from src.core.notification_state import is_notifications_muted
@@ -16,6 +13,7 @@ from src.core.resources import app_icon_path
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.core.worker import NotificationWorker
+from src.ui.qt_compat import QApplication, QFileSystemWatcher, QIcon, QTimer, QTranslator
 from src.ui.fluent_dialog import show_fluent_message
 from src.ui.notify_manager import get_notify_manager
 from src.ui.settings_window import SettingsWindow

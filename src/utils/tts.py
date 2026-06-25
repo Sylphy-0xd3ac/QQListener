@@ -8,9 +8,9 @@ import tempfile
 import edge_tts
 import pygame
 from loguru import logger
-from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from src.core.settings import get_settings
+from src.ui.qt_compat import QObject, QThread, QTimer, Signal
 
 
 def _set_windows_volume_percent(percent: float) -> None:

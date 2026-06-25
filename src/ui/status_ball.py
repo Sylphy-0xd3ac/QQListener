@@ -1,11 +1,25 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QCursor, QIcon, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QApplication, QWidget
-
 from src.core.notification_state import is_notifications_muted, toggle_notifications_muted
 from src.core.resources import app_icon_path, resource_path
+from src.ui.qt_compat import (
+    QColor,
+    QCursor,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPoint,
+    QPen,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    Signal,
+    QWidget,
+    event_global_position,
+    event_position,
+    screen_at,
+)
 
 
 class FloatingStatusBall(QWidget):
@@ -68,12 +82,12 @@ class FloatingStatusBall(QWidget):
 
         self._press_global_pos = self._event_global_pos(event)
         self._press_window_pos = self.pos()
-        self._pressed_action = self._action_at(event.position().toPoint())
+        self._pressed_action = self._action_at(event_position(event))
         self._dragging = False
         event.accept()
 
     def mouseMoveEvent(self, event):
-        pos = event.position().toPoint()
+        pos = event_position(event)
         if self._press_global_pos is None or self._press_window_pos is None:
             self._update_cursor(pos)
             super().mouseMoveEvent(event)
@@ -97,7 +111,7 @@ class FloatingStatusBall(QWidget):
             super().mouseReleaseEvent(event)
             return
 
-        released_action = self._action_at(event.position().toPoint())
+        released_action = self._action_at(event_position(event))
         if not self._dragging and self._pressed_action == released_action:
             if released_action == "settings":
                 self.show_settings_requested.emit()
@@ -110,7 +124,7 @@ class FloatingStatusBall(QWidget):
         self._press_window_pos = None
         self._pressed_action = ""
         self._dragging = False
-        self._update_cursor(event.position().toPoint())
+        self._update_cursor(event_position(event))
         event.accept()
 
     def leaveEvent(self, event):
@@ -175,7 +189,7 @@ class FloatingStatusBall(QWidget):
         self.setToolTip("通知已静音" if is_notifications_muted() else "通知正常")
 
     def _move_to_default_position(self):
-        screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
+        screen = screen_at(QCursor.pos())
         if not screen:
             return
 
@@ -184,6 +198,4 @@ class FloatingStatusBall(QWidget):
 
     @staticmethod
     def _event_global_pos(event) -> QPoint:
-        if hasattr(event, "globalPosition"):
-            return event.globalPosition().toPoint()
-        return event.globalPos()
+        return event_global_position(event)

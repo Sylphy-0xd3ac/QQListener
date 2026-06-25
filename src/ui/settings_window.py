@@ -6,17 +6,22 @@ import webbrowser
 
 import pygame
 from loguru import logger
-from PySide6.QtCore import QRectF, QSize, Qt, QTranslator
-from PySide6.QtGui import QColor, QIcon, QPainter
-from PySide6.QtWidgets import (
+from src.ui.qt_compat import (
     QApplication,
+    QColor,
     QFileDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
+    QIcon,
     QLabel,
     QLineEdit,
+    QPainter,
+    QRectF,
+    QSize,
     QStackedWidget,
+    Qt,
+    QTranslator,
     QVBoxLayout,
     QWidget,
 )
@@ -76,12 +81,13 @@ def _patch_macos_frameless_window() -> None:
 
 _patch_macos_frameless_window()
 
-from qfluentwidgets import (
+from src.ui.fluent_compat import (
     CaptionLabel,
     CheckBox,
     ComboBox,
     DoubleSpinBox,
     EditableComboBox,
+    FluentIcon as FIF,
     FluentWindow,
     IconInfoBadge,
     LineEdit,
@@ -94,9 +100,6 @@ from qfluentwidgets import (
     Slider,
     SpinBox,
     SubtitleLabel,
-)
-from qfluentwidgets import (
-    FluentIcon as FIF,
 )
 
 from src.core.autostart import (

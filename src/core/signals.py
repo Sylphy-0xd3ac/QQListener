@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal
+from src.ui.qt_compat import QObject, Signal
 
 
 class AppSignals(QObject):

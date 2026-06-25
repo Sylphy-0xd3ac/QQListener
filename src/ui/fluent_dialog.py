@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QDialog, QWidget
-from qfluentwidgets import MessageBox
+from src.ui.qt_compat import QDialog, QWidget
+from src.ui.fluent_compat import MessageBox
 
 
 def show_fluent_message(

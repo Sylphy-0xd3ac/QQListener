@@ -1,8 +1,5 @@
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QGraphicsDropShadowEffect
-
 from src.core.settings import get_settings
+from src.ui.qt_compat import QColor, QGraphicsDropShadowEffect, QObject, Signal
 from src.ui.notify_window import NotifyWindow
 
 

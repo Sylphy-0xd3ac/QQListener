@@ -3,11 +3,20 @@ import argparse
 import shlex
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "QQListener"
+UI_INIT_PATH = PROJECT_ROOT / "src" / "ui" / "__init__.py"
+
+
+def normalize_qt_api(value: str) -> str:
+    api = str(value or "").strip().lower().replace("-", "").replace("_", "")
+    if api in {"pyside2", "qt5"}:
+        return "pyside2"
+    return "pyside6"
 
 
 def _data_spec(source: Path, target: str) -> str:
@@ -25,7 +34,24 @@ def _add_hidden_imports(command: list[str], imports: list[str]) -> None:
         command.extend(["--hidden-import", module_name])
 
 
-def build_command(name: str) -> list[str]:
+@contextmanager
+def write_ui_qt_api(qt_api: str):
+    original = UI_INIT_PATH.read_text(encoding="utf-8") if UI_INIT_PATH.exists() else None
+    UI_INIT_PATH.write_text(
+        f'QT_API = "{qt_api}"\nqtapi = QT_API\n',
+        encoding="utf-8",
+    )
+    try:
+        yield
+    finally:
+        if original is None:
+            UI_INIT_PATH.unlink(missing_ok=True)
+        else:
+            UI_INIT_PATH.write_text(original, encoding="utf-8")
+
+
+def build_command(name: str, qt_api: str) -> list[str]:
+    qt_binding = "PySide2" if qt_api == "pyside2" else "PySide6"
     command = [
         sys.executable,
         "-m",
@@ -53,7 +79,9 @@ def build_command(name: str) -> list[str]:
         "--collect-submodules",
         "qframelesswindow",
         "--hidden-import",
-        "PySide6.QtSvg",
+        "src.ui.qt_compat",
+        "--hidden-import",
+        f"{qt_binding}.QtSvg",
         "--hidden-import",
         "aiohttp.web",
         "--hidden-import",
@@ -92,15 +120,18 @@ def build_command(name: str) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build QQListener with PyInstaller.")
     parser.add_argument("--name", default=APP_NAME)
+    parser.add_argument("--qt-api", default="pyside6", choices=["pyside2", "pyside6"])
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    command = build_command(args.name)
+    qt_api = normalize_qt_api(args.qt_api)
+    command = build_command(args.name, qt_api)
     if args.dry_run:
         print(shlex.join(command))
         return 0
 
-    subprocess.run(command, cwd=PROJECT_ROOT, check=True)
+    with write_ui_qt_api(qt_api):
+        subprocess.run(command, cwd=PROJECT_ROOT, check=True)
     return 0
 
 

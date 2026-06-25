@@ -1,12 +1,19 @@
 import sys
 
 from loguru import logger
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QAction, QCursor, QIcon
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from src.core.resources import app_icon_path
 from src.core.settings import get_settings
+from src.ui.qt_compat import (
+    QAction,
+    QApplication,
+    QCursor,
+    QIcon,
+    QMenu,
+    QObject,
+    QSystemTrayIcon,
+    Signal,
+)
 
 
 class TrayIcon(QObject):

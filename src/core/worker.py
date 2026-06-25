@@ -2,7 +2,6 @@ import asyncio
 import sys
 
 from loguru import logger
-from PySide6.QtCore import QThread, Signal
 
 from src.core.notification_engines import (
     ENGINE_IDLE,
@@ -14,6 +13,7 @@ from src.core.notification_engines import (
 )
 from src.core.settings import get_settings
 from src.core.signals import get_signals
+from src.ui.qt_compat import QThread, Signal
 from src.utils.message_processor import MessageProcessor
 
 

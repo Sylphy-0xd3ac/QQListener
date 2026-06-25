@@ -3,28 +3,32 @@ import sys
 
 import pygame
 from loguru import logger
-from PySide6.QtCore import (
-    QEasingCurve,
-    QPropertyAnimation,
-    Qt,
-    QTimer,
-    QUrl,
-    QVariantAnimation,
-)
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import (
+from src.ui.qt_compat import (
     QApplication,
+    QColor,
+    QDesktopServices,
+    QEasingCurve,
+    QFont,
+    QFontDatabase,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
+    QIcon,
     QLabel,
+    QPainter,
+    QPixmap,
+    QPropertyAnimation,
     QSizePolicy,
+    Qt,
+    QTimer,
+    QUrl,
     QVBoxLayout,
+    QVariantAnimation,
     QWidget,
 )
-from qfluentwidgets import PrimaryPushButton, PushButton
 
 from src.core.settings import get_settings
+from src.ui.fluent_compat import PrimaryPushButton, PushButton
 from src.utils.tts import TTSManager
 
 PRIORITY_STYLES = {
