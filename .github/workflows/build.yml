@@ -24,12 +24,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: windows-x64
+          - name: windows-x64-pyside2
             os: windows-latest
-            package_name: QQListener-windows-x64.exe
-          - name: macos-native
-            os: macos-latest
-            package_name: QQListener-macos.app.zip
+            qt_api: pyside2
+            package_name: QQListener-windows-x64-pyside2.exe
+          - name: windows-x64-pyside6
+            os: windows-latest
+            qt_api: pyside6
+            package_name: QQListener-windows-x64-pyside6.exe
+          - name: macos-arm64-pyside6
+            os: macos-26
+            qt_api: pyside6
+            package_name: QQListener-macos-arm64-pyside6.app.zip
 
     steps:
       - name: Checkout
@@ -40,17 +46,43 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install PySide6 dependencies
+        if: matrix.qt_api == 'pyside6'
         run: |
           python -m pip install --upgrade pip uv
           uv sync --frozen
           uv pip install "pyinstaller>=6.10,<7"
 
+      - name: Install PySide2 dependencies
+        if: matrix.qt_api == 'pyside2'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip uv
+          uv venv --python 3.10
+          uv pip install \
+            "aiohttp>=3.13.3" \
+            "edge-tts>=7.2.7" \
+            "loguru>=0.7.2" \
+            "psutil>=7.2.2" \
+            "pygame>=2.6.1" \
+            "PySide2>=5.15.2.1,<5.16" \
+            "PySide2-Fluent-Widgets>=1.8.7" \
+            "pycaw>=20240210" \
+            "uiautomation>=2.0.29" \
+            "winsdk>=1.0.0b10" \
+            "pyinstaller>=6.10,<7"
+
       - name: Compile check
-        run: uv run python -m compileall -q src main.py
+        run: uv run python -m compileall -q src main.py scripts
+
+      - name: Qt import check
+        env:
+          QQLISTENER_QT_API: ${{ matrix.qt_api }}
+        run: |
+          uv run python -c "from src.ui.qt_compat import QT_API; import src.ui.fluent_compat; assert QT_API == '${{ matrix.qt_api }}'; print(QT_API)"
 
       - name: Build app
-        run: uv run python scripts/build_app.py
+        run: uv run python scripts/build_app.py --qt-api ${{ matrix.qt_api }}
 
       - name: Package Windows artifact
         if: runner.os == 'Windows'
