@@ -1,3 +1,5 @@
+import sys
+
 from loguru import logger
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QAction, QCursor, QIcon
@@ -70,9 +72,17 @@ class TrayIcon(QObject):
 
     def _on_activated(self, reason):
         """托盘图标被激活时的处理"""
-        if reason in {QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick, QSystemTrayIcon.MiddleClick}:
+        if reason in {
+            QSystemTrayIcon.Trigger,
+            QSystemTrayIcon.DoubleClick,
+            QSystemTrayIcon.MiddleClick,
+        }:
             self.show_settings_signal.emit()
-        elif reason == QSystemTrayIcon.Context:
+        elif (
+            reason == QSystemTrayIcon.Context
+            and sys.platform == "win32"
+            and self._menu
+        ):
             self._menu.popup(QCursor.pos())
 
     def destroy(self):

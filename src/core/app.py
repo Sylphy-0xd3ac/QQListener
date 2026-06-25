@@ -11,6 +11,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from src.core.logging import setup_logging
+from src.core.notification_state import is_notifications_muted
 from src.core.resources import app_icon_path
 from src.core.settings import get_settings
 from src.core.signals import get_signals
@@ -18,6 +19,7 @@ from src.core.worker import NotificationWorker
 from src.ui.fluent_dialog import show_fluent_message
 from src.ui.notify_manager import get_notify_manager
 from src.ui.settings_window import SettingsWindow
+from src.ui.status_ball import FloatingStatusBall
 from src.ui.tray_icon import TrayIcon
 
 APP_ICON_PATH = app_icon_path()
@@ -32,6 +34,7 @@ class QQListenerApp:
         self.worker: NotificationWorker | None = None
         self.settings_window: SettingsWindow | None = None
         self.tray_icon: TrayIcon | None = None
+        self.status_ball: FloatingStatusBall | None = None
         self.translator: QTranslator | None = None
         self.notify_manager = get_notify_manager()
         self.settings_watcher: QFileSystemWatcher | None = None
@@ -64,6 +67,10 @@ class QQListenerApp:
 
         if not self.tray_icon.create():
             logger.error("创建托盘图标失败")
+
+        self.status_ball = FloatingStatusBall()
+        self.status_ball.show_settings_requested.connect(self.show_settings)
+        self.status_ball.show()
 
         return True
 
@@ -258,6 +265,10 @@ class QQListenerApp:
         self.worker.start()
 
     def push_notification(self, data: dict):
+        if is_notifications_muted():
+            logger.debug("通知已静音，跳过显示")
+            return
+
         try:
             self.notify_manager.show_notification(data)
         except Exception:
@@ -275,6 +286,9 @@ class QQListenerApp:
 
         if self.tray_icon:
             self.tray_icon.destroy()
+        if self.status_ball:
+            self.status_ball.close()
+            self.status_ball = None
         if self.settings_window:
             self.settings_window.close()
             self.settings_window = None

@@ -17,6 +17,8 @@ from urllib.parse import unquote, urlparse
 
 from loguru import logger
 
+from src.core.notification_state import is_notifications_muted
+
 if TYPE_CHECKING:
     from src.core.worker import NotificationWorker
 
@@ -142,6 +144,10 @@ class UIAutomationNotificationEngine(NotificationEngine):
 
                     key = hashlib.md5("|".join(norm).encode("utf-8")).hexdigest()
                     current_found_keys.add(key)
+
+                    if is_notifications_muted():
+                        worker.processor.active_toasts.add(key)
+                        continue
 
                     result = worker.processor.process_notification(texts)
                     if result and isinstance(result, dict):
@@ -532,6 +538,9 @@ class OneBotV11ForwardNotificationEngine(NotificationEngine):
         if not texts:
             return
 
+        if is_notifications_muted():
+            return
+
         result = worker.processor.process_notification(texts)
         if result and isinstance(result, dict):
             result.update(await self._onebot_event_assets(session, ws, event))
@@ -691,6 +700,10 @@ class WinSDKNotificationEngine(NotificationEngine):
                                 pass
 
                             if texts:
+                                if is_notifications_muted():
+                                    known_ids.add(n.id)
+                                    continue
+
                                 result = worker.processor.process_notification(texts)
                                 if result and isinstance(result, dict):
                                     worker.notification_ready.emit(result)
@@ -938,6 +951,9 @@ class HTTPPushNotificationEngine(NotificationEngine):
             texts = self._payload_to_texts(payload, worker.settings.get("User_QQ", ""))
             if not texts:
                 return web.json_response({"ok": False, "error": "empty message"}, status=400)
+
+            if is_notifications_muted():
+                return web.json_response({"ok": True, "pushed": False})
 
             result = worker.processor.process_notification(texts)
             pushed = bool(result and isinstance(result, dict))
