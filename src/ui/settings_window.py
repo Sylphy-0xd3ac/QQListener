@@ -6,9 +6,9 @@ import webbrowser
 
 import pygame
 from loguru import logger
-from PySide2.QtCore import QRectF, QSize, Qt, QTranslator
-from PySide2.QtGui import QColor, QIcon, QPainter
-from PySide2.QtWidgets import (
+from PySide6.QtCore import QRectF, QSize, Qt, QTranslator
+from PySide6.QtGui import QColor, QIcon, QPainter
+from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QFormLayout,
@@ -515,7 +515,7 @@ class SettingsWindow(FluentWindow):
         self.onebot_v11_token = self._line_edit(
             self.data.get("OneBotV11_Access_Token", self.settings.onebot_v11_token)
         )
-        self.onebot_v11_token.setEchoMode(QLineEdit.Password)
+        self.onebot_v11_token.setEchoMode(QLineEdit.EchoMode.Password)
 
         onebot_form.addRow(onebot_title)
         onebot_form.addRow(onebot_hint)
@@ -871,7 +871,7 @@ class SettingsWindow(FluentWindow):
         self.http_push_token = self._line_edit(
             self.data.get("HTTPPush_Token", self.settings.http_push_token)
         )
-        self.http_push_token.setEchoMode(QLineEdit.Password)
+        self.http_push_token.setEchoMode(QLineEdit.EchoMode.Password)
 
         form.addRow(self.tr("HTTP Push"), self.http_push_enabled)
         form.addRow(self.http_push_debug_hint)
@@ -1078,7 +1078,7 @@ class SettingsWindow(FluentWindow):
 
     def _on_tts_changed(self, state):
         """TTS状态改变"""
-        current = state == Qt.Checked
+        current = state == Qt.CheckState.Checked
         self.edge_tts.setEnabled(current)
         self.edge_pitch.setEnabled(current and self.edge_tts.isChecked())
         self.edge_rate.setEnabled(current and self.edge_tts.isChecked())

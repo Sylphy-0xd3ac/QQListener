@@ -1,4 +1,4 @@
-from PySide2.QtWidgets import QDialog, QWidget
+from PySide6.QtWidgets import QDialog, QWidget
 from qfluentwidgets import MessageBox
 
 
@@ -40,4 +40,4 @@ def show_fluent_message(
         }
     """)
 
-    return dialog.exec_() == QDialog.Accepted
+    return dialog.exec() == QDialog.DialogCode.Accepted

@@ -4,7 +4,7 @@
 > 本程序由 [@HxAbCd](https://0xabcd.dev) 使用 AI 重构，代码结构已发生较大变化
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://python.org)
-[![PySide2](https://img.shields.io/badge/PySide2-5.15+-green.svg)](https://doc.qt.io/qtforpython/)
+[![PySide6](https://img.shields.io/badge/PySide6-6.7+-green.svg)](https://doc.qt.io/qtforpython/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![NFZX](https://img.shields.io/badge/株洲市南方中学-参赛作品+-blue.svg)](http://jyt.hunan.gov.cn/sjyt/dhjyg/)
 
@@ -13,7 +13,7 @@
 - **极速响应** - 底层采用原生 WinSDK 接口，低延迟捕捉每一条群消息
 - **智能播报** - 集成 Edge-TTS 神经网络语音，AI帮你催作业
 - **多级控制** - 智能识别一般、重要、紧急事件，支持分级通知管理和消息过滤
-- **界面美观** - 纯正 PySide2 开发，采用 Fluent Design 风格，适配班级大屏
+- **界面美观** - 纯正 PySide6 开发，采用 Fluent Design 风格，适配班级大屏
 - **极简配置** - 自动适配大多数 QQ 版本，JSON 配置文件支持高度自定义
 - **安全无虞** - 本地化数据处理，不上传隐私信息，代码完全透明可见
 
@@ -107,19 +107,11 @@ QQListener 支持两种消息捕获模式：
 
 ### 依赖安装
 
-Windows 下 `uv sync` 会自动安装 WinSDK 和 UIA 通知监听引擎依赖；macOS/Linux 会自动跳过这些 Windows 专用依赖。PySide2 仅支持 Python 3.10，且 PyPI 轮子主要覆盖 Windows、x86_64 Linux 和 Intel macOS。
+Windows 下 `uv sync` 会自动安装 WinSDK 和 UIA 通知监听引擎依赖；macOS/Linux 会自动跳过这些 Windows 专用依赖。PySide6 支持原生 Apple Silicon。
 
 ```bash
 uv sync
 uv sync --extra system-tts
-```
-
-Apple Silicon macOS 需要使用 Rosetta/x86_64 Python 3.10：
-
-```bash
-uv python install cpython-3.10.17-macos-x86_64-none
-arch -x86_64 ~/.local/share/uv/python/cpython-3.10.17-macos-x86_64-none/bin/python3.10 -m venv .venv
-arch -x86_64 .venv/bin/python -m pip install -e .
 ```
 
 - `system-tts`: 安装 `pyttsx3` 系统 TTS 后备引擎

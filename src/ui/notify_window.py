@@ -3,7 +3,7 @@ import sys
 
 import pygame
 from loguru import logger
-from PySide2.QtCore import (
+from PySide6.QtCore import (
     QEasingCurve,
     QPropertyAnimation,
     Qt,
@@ -11,8 +11,8 @@ from PySide2.QtCore import (
     QUrl,
     QVariantAnimation,
 )
-from PySide2.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPixmap
-from PySide2.QtWidgets import (
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QGraphicsDropShadowEffect,

@@ -27,9 +27,9 @@ jobs:
           - name: windows-x64
             os: windows-latest
             package_name: QQListener-windows-x64.exe
-          - name: macos-x64-rosetta
-            os: macos-13
-            package_name: QQListener-macos-x64-rosetta.app.zip
+          - name: macos-native
+            os: macos-latest
+            package_name: QQListener-macos.app.zip
 
     steps:
       - name: Checkout
@@ -67,9 +67,9 @@ jobs:
           if [ -d "dist/QQListener.app" ]; then
             ditto -c -k --sequesterRsrc --keepParent "dist/QQListener.app" "${{ matrix.package_name }}"
           else
-            cp "dist/QQListener" "QQListener-macos-x64-rosetta"
-            chmod +x "QQListener-macos-x64-rosetta"
-            ditto -c -k --sequesterRsrc "QQListener-macos-x64-rosetta" "${{ matrix.package_name }}"
+            cp "dist/QQListener" "QQListener-macos"
+            chmod +x "QQListener-macos"
+            ditto -c -k --sequesterRsrc "QQListener-macos" "${{ matrix.package_name }}"
           fi
 
       - name: Upload artifact

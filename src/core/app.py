@@ -1,14 +1,15 @@
+import pathlib
 import sys
 import tempfile
-from pathlib import Path
 
 import pygame
 from loguru import logger
-from PySide2.QtCore import QFileSystemWatcher, QTimer, QTranslator
-from PySide2.QtGui import QIcon
-from PySide2.QtWidgets import QApplication
+from PySide6.QtCore import QFileSystemWatcher, QTimer, QTranslator
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 
 from src.core.logging import setup_logging
+from src.core.resources import app_icon_path
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.core.worker import NotificationWorker
@@ -17,8 +18,8 @@ from src.ui.notify_manager import get_notify_manager
 from src.ui.settings_window import SettingsWindow
 from src.ui.tray_icon import TrayIcon
 
-
-APP_ICON_PATH = Path(__file__).resolve().parents[2] / "icon.ico"
+APP_ICON_PATH = app_icon_path()
+APP_USER_MODEL_ID = "Sylphy.QQListener"
 
 
 class QQListenerApp:
@@ -37,6 +38,7 @@ class QQListenerApp:
 
     def initialize(self) -> bool:
         setup_logging()
+        self._set_windows_app_user_model_id()
 
         try:
             pygame.mixer.init()
@@ -63,15 +65,35 @@ class QQListenerApp:
 
         return True
 
+    def _set_windows_app_user_model_id(self):
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+
+            set_app_id = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
+            set_app_id.argtypes = [ctypes.c_wchar_p]
+            set_app_id.restype = ctypes.c_long
+            result = set_app_id(APP_USER_MODEL_ID)
+            if result:
+                logger.warning("设置 Windows AppUserModelID 返回: {}", result)
+        except Exception:
+            logger.exception("设置 Windows AppUserModelID 失败")
+
     def _set_application_icon(self):
         if not self.app:
             return
 
-        icon = QIcon(str(APP_ICON_PATH))
+        icon_path = app_icon_path()
+        icon = QIcon(str(icon_path))
         if icon.isNull():
-            logger.warning("应用图标加载失败: {}", APP_ICON_PATH)
+            logger.warning("应用图标加载失败: {}", icon_path)
             return
 
+        self.app.setApplicationName("QQListener")
+        self.app.setApplicationDisplayName("QQListener")
+        self.app.setOrganizationName("Sylphy")
         self.app.setWindowIcon(icon)
         self._set_macos_dock_icon(icon)
 
@@ -95,7 +117,7 @@ class QQListenerApp:
                     logger.warning("保存 macOS Dock 图标失败: {}", dock_icon_path)
 
             if image is None or not image.isValid():
-                image = NSImage.alloc().initWithContentsOfFile_(str(APP_ICON_PATH))
+                image = NSImage.alloc().initWithContentsOfFile_(str(app_icon_path()))
 
             if image is None or not image.isValid():
                 logger.warning("macOS Dock 图标加载失败")
@@ -170,7 +192,7 @@ class QQListenerApp:
             self.show_settings()
         if self.worker:
             self.worker.start()
-        exit_code = self.app.exec_() if self.app else 1
+        exit_code = self.app.exec() if self.app else 1
         self.cleanup()
         sys.exit(exit_code)
 
@@ -178,7 +200,7 @@ class QQListenerApp:
         try:
             if self.settings_window is None:
                 self.settings_window = SettingsWindow()
-                self.settings_window.setWindowIcon(QIcon(str(APP_ICON_PATH)))
+                self.settings_window.setWindowIcon(QIcon(str(app_icon_path())))
 
             self.settings_window.showNormal()
             self.settings_window.raise_()
@@ -190,7 +212,7 @@ class QQListenerApp:
         except RuntimeError:
             logger.warning("设置窗口对象失效，正在重建")
             self.settings_window = SettingsWindow()
-            self.settings_window.setWindowIcon(QIcon(str(APP_ICON_PATH)))
+            self.settings_window.setWindowIcon(QIcon(str(app_icon_path())))
             self.settings_window.showNormal()
             self.settings_window.raise_()
             self.settings_window.activateWindow()

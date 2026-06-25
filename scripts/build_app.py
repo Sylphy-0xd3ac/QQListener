@@ -53,7 +53,7 @@ def build_command(name: str) -> list[str]:
         "--collect-submodules",
         "qframelesswindow",
         "--hidden-import",
-        "PySide2.QtSvg",
+        "PySide6.QtSvg",
         "--hidden-import",
         "aiohttp.web",
         "--hidden-import",

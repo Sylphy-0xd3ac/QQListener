@@ -1,8 +1,9 @@
 from loguru import logger
-from PySide2.QtCore import QObject, Signal
-from PySide2.QtGui import QCursor, QIcon
-from PySide2.QtWidgets import QAction, QMenu, QSystemTrayIcon
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QAction, QCursor, QIcon
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from src.core.resources import app_icon_path
 from src.core.settings import get_settings
 
 
@@ -23,7 +24,19 @@ class TrayIcon(QObject):
         try:
             # 创建托盘图标
             self._tray_icon = QSystemTrayIcon(self)
-            self._tray_icon.setIcon(QIcon("icon.ico"))
+            icon_path = app_icon_path()
+            icon = QIcon(str(icon_path))
+            if icon.isNull():
+                logger.warning("托盘图标加载失败: {}", icon_path)
+                app = QApplication.instance()
+                if app:
+                    icon = app.windowIcon()
+
+            if icon.isNull():
+                logger.error("没有可用的托盘图标")
+                return False
+
+            self._tray_icon.setIcon(icon)
             self._tray_icon.setToolTip("QQListener")
 
             # 创建右键菜单
@@ -41,6 +54,7 @@ class TrayIcon(QObject):
             exit_action = QAction("退出", self)
             exit_action.triggered.connect(lambda *_: self.exit_signal.emit())
             self._menu.addAction(exit_action)
+            self._tray_icon.setContextMenu(self._menu)
 
             # 连接托盘图标激活信号
             self._tray_icon.activated.connect(self._on_activated)

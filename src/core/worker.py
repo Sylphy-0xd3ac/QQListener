@@ -2,7 +2,7 @@ import asyncio
 import sys
 
 from loguru import logger
-from PySide2.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal
 
 from src.core.notification_engines import (
     ENGINE_IDLE,

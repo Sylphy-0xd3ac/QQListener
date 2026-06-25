@@ -25,7 +25,6 @@ venv/
 env/
 ENV/
 .venv/
-.venv-rosetta/
 
 # IDE
 .vscode/
