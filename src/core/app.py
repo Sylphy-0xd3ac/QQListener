@@ -1,4 +1,6 @@
 import pathlib
+
+Path = pathlib.Path
 import sys
 import tempfile
 
