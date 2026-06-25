@@ -25,6 +25,7 @@ from src.ui.qt_compat import (
     QVBoxLayout,
     QVariantAnimation,
     QWidget,
+    load_icon,
 )
 
 from src.core.settings import get_settings
@@ -318,7 +319,11 @@ class NotifyWindow(QWidget):
         btn = PrimaryPushButton() if primary else PushButton()
         btn.setText(text)
         if icon_path and os.path.exists(icon_path):
-            btn.setIcon(QIcon(icon_path) if primary else self._tinted_icon(icon_path, QColor(0, 0, 0)))
+            if primary:
+                icon = load_icon(icon_path)
+            else:
+                icon = self._tinted_icon(icon_path, QColor(0, 0, 0))
+            btn.setIcon(icon)
         btn.setFixedHeight(40)
         btn.setMinimumWidth(160)
         return btn
@@ -326,7 +331,7 @@ class NotifyWindow(QWidget):
     def _tinted_icon(self, icon_path: str, color: QColor) -> QIcon:
         pixmap = QPixmap(icon_path)
         if pixmap.isNull():
-            return QIcon(icon_path)
+            return load_icon(icon_path)
 
         tinted = QPixmap(pixmap.size())
         tinted.fill(Qt.transparent)

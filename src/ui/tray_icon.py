@@ -2,17 +2,17 @@ import sys
 
 from loguru import logger
 
-from src.core.resources import app_icon_path
+from src.core.resources import app_icon_path, app_icon_png_path
 from src.core.settings import get_settings
 from src.ui.qt_compat import (
     QAction,
     QApplication,
     QCursor,
-    QIcon,
     QMenu,
     QObject,
     QSystemTrayIcon,
     Signal,
+    load_icon,
 )
 
 
@@ -34,7 +34,7 @@ class TrayIcon(QObject):
             # 创建托盘图标
             self._tray_icon = QSystemTrayIcon(self)
             icon_path = app_icon_path()
-            icon = QIcon(str(icon_path))
+            icon = load_icon(icon_path, app_icon_png_path())
             if icon.isNull():
                 logger.warning("托盘图标加载失败: {}", icon_path)
                 app = QApplication.instance()

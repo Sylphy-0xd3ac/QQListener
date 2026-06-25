@@ -6,6 +6,8 @@ import webbrowser
 
 import pygame
 from loguru import logger
+
+from src.core.resources import resource_path
 from src.ui.qt_compat import (
     QApplication,
     QColor,
@@ -13,7 +15,6 @@ from src.ui.qt_compat import (
     QFormLayout,
     QFrame,
     QHBoxLayout,
-    QIcon,
     QLabel,
     QLineEdit,
     QPainter,
@@ -24,6 +25,7 @@ from src.ui.qt_compat import (
     QTranslator,
     QVBoxLayout,
     QWidget,
+    load_icon,
 )
 
 
@@ -291,7 +293,12 @@ class SettingsWindow(FluentWindow):
         self._settings_pages = {}
         for route_key, title, icon, content in [
             ("basic", self.tr("基本"), FIF.HOME, self._create_basic_tab()),
-            ("engine", self.tr("引擎"), QIcon("asset/engine.svg"), self._create_engine_tab()),
+            (
+                "engine",
+                self.tr("引擎"),
+                load_icon(resource_path("asset", "engine.svg")),
+                self._create_engine_tab(),
+            ),
             ("rule", self.tr("规则"), FIF.CHECKBOX, self._create_rule_tab()),
             ("appearance", self.tr("外观"), FIF.PALETTE, self._create_appearance_tab()),
             ("notify", self.tr("通知"), FIF.MESSAGE, self._create_notify_tab()),

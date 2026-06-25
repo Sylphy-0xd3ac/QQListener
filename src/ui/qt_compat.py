@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from importlib import import_module
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -35,6 +36,10 @@ _BINDING = "PySide2" if IS_PYSIDE2 else "PySide6"
 QtCore = import_module(f"{_BINDING}.QtCore")
 QtGui = import_module(f"{_BINDING}.QtGui")
 QtWidgets = import_module(f"{_BINDING}.QtWidgets")
+try:
+    QtSvg = import_module(f"{_BINDING}.QtSvg")
+except Exception:
+    QtSvg = None
 
 QEasingCurve = QtCore.QEasingCurve
 QFileSystemWatcher = QtCore.QFileSystemWatcher
@@ -95,6 +100,11 @@ def _ensure_namespace(owner: object, name: str, values: dict[str, object]) -> No
 def _patch_pyside2_namespaces() -> None:
     if not IS_PYSIDE2:
         return
+
+    if not hasattr(QApplication, "exec") and hasattr(QApplication, "exec_"):
+        QApplication.exec = QApplication.exec_
+    if not hasattr(QDialog, "exec") and hasattr(QDialog, "exec_"):
+        QDialog.exec = QDialog.exec_
 
     _ensure_namespace(
         Qt,
@@ -165,3 +175,28 @@ def screen_at(pos: QPoint):
         if screen:
             return screen
     return QApplication.primaryScreen()
+
+
+def load_icon(
+    path: str | os.PathLike | None,
+    fallback_path: str | os.PathLike | None = None,
+) -> QIcon:
+    seen: set[str] = set()
+    for candidate in (path, fallback_path):
+        if not candidate:
+            continue
+
+        candidate_path = str(Path(candidate))
+        if candidate_path in seen:
+            continue
+        seen.add(candidate_path)
+
+        icon = QIcon(candidate_path)
+        if not icon.isNull():
+            return icon
+
+        pixmap = QPixmap(candidate_path)
+        if not pixmap.isNull():
+            return QIcon(pixmap)
+
+    return QIcon()

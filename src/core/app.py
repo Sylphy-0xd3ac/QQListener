@@ -9,13 +9,20 @@ from loguru import logger
 
 from src.core.logging import setup_logging
 from src.core.notification_state import is_notifications_muted
-from src.core.resources import app_icon_path
+from src.core.resources import app_icon_path, app_icon_png_path
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.core.worker import NotificationWorker
-from src.ui.qt_compat import QApplication, QFileSystemWatcher, QIcon, QTimer, QTranslator
 from src.ui.fluent_dialog import show_fluent_message
 from src.ui.notify_manager import get_notify_manager
+from src.ui.qt_compat import (
+    QApplication,
+    QFileSystemWatcher,
+    QIcon,
+    QTimer,
+    QTranslator,
+    load_icon,
+)
 from src.ui.settings_window import SettingsWindow
 from src.ui.status_ball import FloatingStatusBall
 from src.ui.tray_icon import TrayIcon
@@ -93,7 +100,7 @@ class QQListenerApp:
             return
 
         icon_path = app_icon_path()
-        icon = QIcon(str(icon_path))
+        icon = load_icon(icon_path, app_icon_png_path())
         if icon.isNull():
             logger.warning("应用图标加载失败: {}", icon_path)
             return
@@ -207,7 +214,9 @@ class QQListenerApp:
         try:
             if self.settings_window is None:
                 self.settings_window = SettingsWindow()
-                self.settings_window.setWindowIcon(QIcon(str(app_icon_path())))
+                self.settings_window.setWindowIcon(
+                    load_icon(app_icon_path(), app_icon_png_path())
+                )
 
             self.settings_window.showNormal()
             self.settings_window.raise_()
@@ -219,7 +228,9 @@ class QQListenerApp:
         except RuntimeError:
             logger.warning("设置窗口对象失效，正在重建")
             self.settings_window = SettingsWindow()
-            self.settings_window.setWindowIcon(QIcon(str(app_icon_path())))
+            self.settings_window.setWindowIcon(
+                load_icon(app_icon_path(), app_icon_png_path())
+            )
             self.settings_window.showNormal()
             self.settings_window.raise_()
             self.settings_window.activateWindow()

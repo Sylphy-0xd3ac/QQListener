@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from src.core.notification_state import is_notifications_muted, toggle_notifications_muted
-from src.core.resources import app_icon_path, resource_path
+from src.core.resources import app_icon_path, app_icon_png_path, resource_path
 from src.ui.qt_compat import (
     QColor,
     QCursor,
-    QIcon,
     QPainter,
     QPainterPath,
     QPoint,
@@ -18,6 +17,7 @@ from src.ui.qt_compat import (
     QWidget,
     event_global_position,
     event_position,
+    load_icon,
     screen_at,
 )
 
@@ -37,8 +37,8 @@ class FloatingStatusBall(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-        self._logo_icon = QIcon(str(app_icon_path()))
-        self._settings_icon = QIcon(str(resource_path("asset", "settings.svg")))
+        self._logo_icon = load_icon(app_icon_path(), app_icon_png_path())
+        self._settings_icon = load_icon(resource_path("asset", "settings.svg"))
         self._logo_rect = QRect(3, 3, 48, 48)
         self._logo_icon_rect = QRect(12, 12, 30, 30)
         self._settings_rect = QRect(60, 18, 18, 18)
