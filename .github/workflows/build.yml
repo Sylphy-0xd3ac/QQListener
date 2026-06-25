@@ -80,6 +80,7 @@ jobs:
             PySide6-Addons \
             PySide6-Essentials \
             PySide6-Fluent-Widgets \
+            shiboken6 \
             PySideSix-Frameless-Window || true
           uv pip list | grep -Ei "pyside|fluent|frameless" || true
 
@@ -87,10 +88,25 @@ jobs:
         if: runner.os == 'macOS'
         run: uv pip install "pyobjc-framework-Cocoa>=10"
 
+      - name: Clean PySide2 Qt environment
+        if: matrix.qt_api == 'pyside2'
+        shell: bash
+        run: |
+          uv pip uninstall -y \
+            PySide6 \
+            PySide6-Addons \
+            PySide6-Essentials \
+            PySide6-Fluent-Widgets \
+            shiboken6 \
+            PySideSix-Frameless-Window || true
+          uv pip install --reinstall --no-deps "PySide2-Fluent-Widgets>=1.8.7"
+          uv pip list | grep -Ei "pyside|fluent|frameless" || true
+
       - name: Compile check
         run: uv run python -m compileall -q src main.py scripts
 
       - name: Qt import check
+        shell: bash
         env:
           QQLISTENER_QT_API: ${{ matrix.qt_api }}
         run: |
@@ -98,14 +114,15 @@ jobs:
           import importlib.util
           import os
 
+          expected = os.environ["QQLISTENER_QT_API"]
+          forbidden = "PySide6" if expected == "pyside2" else "PySide2"
+          if importlib.util.find_spec(forbidden):
+              raise SystemExit(f"{forbidden} must not be installed in {expected} job")
+
           from src.ui.qt_compat import QT_API
           import src.ui.fluent_compat
 
-          expected = os.environ["QQLISTENER_QT_API"]
-          forbidden = "PySide6" if expected == "pyside2" else "PySide2"
           assert QT_API == expected, (QT_API, expected)
-          if importlib.util.find_spec(forbidden):
-              raise SystemExit(f"{forbidden} must not be installed in {expected} job")
           print(QT_API)
           PY
 
