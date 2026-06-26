@@ -73,9 +73,7 @@ class QQListenerApp:
         if not self.tray_icon.create():
             logger.error("创建托盘图标失败")
 
-        self.status_ball = FloatingStatusBall()
-        self.status_ball.show_settings_requested.connect(self.show_settings)
-        self.status_ball.show()
+        self._sync_status_ball()
 
         return True
 
@@ -253,8 +251,22 @@ class QQListenerApp:
         if self.settings_window:
             self.settings_window.refresh_home()
 
+        self._sync_status_ball()
         self._restart_worker()
         self._ensure_settings_watch_path()
+
+    def _sync_status_ball(self):
+        if not self.settings.show_status_ball:
+            self._destroy_status_ball()
+            return
+
+        if self.status_ball is None:
+            self.status_ball = FloatingStatusBall()
+            self.status_ball.show_settings_requested.connect(self.show_settings)
+
+        self.status_ball.refresh_state()
+        if not self.status_ball.isVisible():
+            self.status_ball.show()
 
     def _restart_worker(self):
         old_worker = self.worker
@@ -295,12 +307,19 @@ class QQListenerApp:
 
         if self.tray_icon:
             self.tray_icon.destroy()
-        if self.status_ball:
-            self.status_ball.close()
-            self.status_ball = None
+        self._destroy_status_ball()
         if self.settings_window:
             self.settings_window.close()
             self.settings_window = None
+
+    def _destroy_status_ball(self):
+        if not self.status_ball:
+            return
+
+        ball = self.status_ball
+        self.status_ball = None
+        ball.close()
+        ball.deleteLater()
 
 
 def run_app():

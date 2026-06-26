@@ -1,23 +1,25 @@
 from __future__ import annotations
 
-from src.core.notification_state import is_notifications_muted, toggle_notifications_muted
-from src.core.resources import app_icon_path, app_icon_png_path, resource_path
+from src.core.notification_state import (
+    add_notification_state_listener,
+    is_notifications_muted,
+    remove_notification_state_listener,
+    toggle_notifications_muted,
+)
+from src.ui.fluent_compat import FluentIcon as FIF, IconInfoBadge
 from src.ui.qt_compat import (
     QColor,
     QCursor,
     QPainter,
-    QPainterPath,
-    QPoint,
     QPen,
-    QRect,
+    QPoint,
     QRectF,
     QSize,
     Qt,
+    QTimer,
     Signal,
     QWidget,
     event_global_position,
-    event_position,
-    load_icon,
     screen_at,
 )
 
@@ -25,9 +27,12 @@ from src.ui.qt_compat import (
 class FloatingStatusBall(QWidget):
     show_settings_requested = Signal()
 
+    _LONG_PRESS_MS = 650
+    _DRAG_DISTANCE = 5
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setFixedSize(88, 54)
+        self.setFixedSize(50, 50)
         self.setWindowTitle("QQListener")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -37,19 +42,26 @@ class FloatingStatusBall(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-        self._logo_icon = load_icon(app_icon_path(), app_icon_png_path())
-        self._settings_icon = load_icon(resource_path("asset", "settings.svg"))
-        self._logo_rect = QRect(3, 3, 48, 48)
-        self._logo_icon_rect = QRect(12, 12, 30, 30)
-        self._settings_rect = QRect(60, 18, 18, 18)
-        self._settings_hit_rect = QRect(50, 8, 34, 38)
+        self._badge: IconInfoBadge | None = None
+        self._badge_muted: bool | None = None
         self._press_global_pos: QPoint | None = None
         self._press_window_pos: QPoint | None = None
-        self._pressed_action = ""
         self._dragging = False
+        self._long_press_triggered = False
         self._positioned = False
 
-        self._update_tooltip()
+        self._long_press_timer = QTimer(self)
+        self._long_press_timer.setSingleShot(True)
+        self._long_press_timer.timeout.connect(self._trigger_long_press)
+
+        self._state_listener = self._on_notifications_muted_changed
+        add_notification_state_listener(self._state_listener)
+        self.destroyed.connect(
+            lambda *_args: remove_notification_state_listener(self._state_listener)
+        )
+
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.refresh_state()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -63,47 +75,49 @@ class FloatingStatusBall(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        base_path = self._base_path()
-        shadow_path = QPainterPath(base_path)
-        shadow_path.translate(0, 2)
-        painter.fillPath(shadow_path, QColor(0, 0, 0, 34))
+        shadow = QRectF(4, 5, self.width() - 8, self.height() - 8)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 34))
+        painter.drawEllipse(shadow.translated(0, 2))
 
-        painter.fillPath(base_path, QColor(255, 255, 255))
-        painter.setPen(QPen(QColor(215, 220, 230), 1))
-        painter.drawPath(base_path)
-
-        self._draw_logo(painter)
-        self._draw_settings_icon(painter)
+        base = QRectF(4, 4, self.width() - 8, self.height() - 8)
+        painter.setBrush(QColor(255, 255, 255))
+        painter.setPen(QPen(QColor(214, 220, 230), 1))
+        painter.drawEllipse(base)
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self.show_settings_requested.emit()
+            event.accept()
+            return
+
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
 
-        self._press_global_pos = self._event_global_pos(event)
+        self._press_global_pos = event_global_position(event)
         self._press_window_pos = self.pos()
-        self._pressed_action = self._action_at(event_position(event))
         self._dragging = False
+        self._long_press_triggered = False
+        self._long_press_timer.start(self._LONG_PRESS_MS)
         event.accept()
 
     def mouseMoveEvent(self, event):
-        pos = event_position(event)
         if self._press_global_pos is None or self._press_window_pos is None:
-            self._update_cursor(pos)
             super().mouseMoveEvent(event)
             return
 
-        global_pos = self._event_global_pos(event)
+        global_pos = event_global_position(event)
         delta = global_pos - self._press_global_pos
-        if not self._dragging and delta.manhattanLength() > 4:
+        if not self._dragging and delta.manhattanLength() > self._DRAG_DISTANCE:
             self._dragging = True
+            self._long_press_timer.stop()
 
         if self._dragging:
             self.move(self._press_window_pos + delta)
             event.accept()
             return
 
-        self._update_cursor(pos)
         event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -111,82 +125,51 @@ class FloatingStatusBall(QWidget):
             super().mouseReleaseEvent(event)
             return
 
-        released_action = self._action_at(event_position(event))
-        if not self._dragging and self._pressed_action == released_action:
-            if released_action == "settings":
-                self.show_settings_requested.emit()
-            elif released_action == "logo":
-                toggle_notifications_muted()
-                self._update_tooltip()
-                self.update()
+        self._long_press_timer.stop()
+        if not self._dragging and not self._long_press_triggered:
+            toggle_notifications_muted()
 
         self._press_global_pos = None
         self._press_window_pos = None
-        self._pressed_action = ""
         self._dragging = False
-        self._update_cursor(event_position(event))
+        self._long_press_triggered = False
         event.accept()
 
-    def leaveEvent(self, event):
-        if self._press_global_pos is None:
-            self.unsetCursor()
-        super().leaveEvent(event)
+    def refresh_state(self):
+        muted = is_notifications_muted()
+        self.setToolTip("已暂停" if muted else "通知已启用")
+        self._refresh_badge(muted)
+        self.update()
 
-    def _base_path(self) -> QPainterPath:
-        logo_path = QPainterPath()
-        logo_path.addEllipse(QRectF(self._logo_rect))
+    def _on_notifications_muted_changed(self, _muted: bool):
+        self.refresh_state()
 
-        body_path = QPainterPath()
-        body_path.addRoundedRect(QRectF(30, 9, 52, 36), 18, 18)
+    def _refresh_badge(self, muted: bool):
+        if self._badge is not None and self._badge_muted == muted:
+            return
 
-        return logo_path.united(body_path)
+        if self._badge is not None:
+            self._badge.setParent(None)
+            self._badge.deleteLater()
 
-    def _draw_logo(self, painter: QPainter):
-        pixmap = self._logo_icon.pixmap(self._logo_icon_rect.size())
-        if pixmap.isNull():
-            painter.setPen(QPen(QColor(26, 30, 38), 1))
-            painter.drawText(self._logo_rect, Qt.AlignmentFlag.AlignCenter, "Q")
-        else:
-            painter.drawPixmap(self._logo_icon_rect, pixmap)
+        self._badge = (
+            IconInfoBadge.error(FIF.CLOSE, self)
+            if muted
+            else IconInfoBadge.success(FIF.ACCEPT_MEDIUM, self)
+        )
+        self._badge_muted = muted
+        self._badge.setFixedSize(34, 34)
+        self._badge.setIconSize(QSize(18, 18))
+        self._badge.move((self.width() - 34) // 2, (self.height() - 34) // 2)
+        self._badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._badge.show()
 
-        if is_notifications_muted():
-            painter.setPen(
-                QPen(QColor(225, 29, 72), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-            )
-            painter.drawLine(43, 10, 11, 43)
+    def _trigger_long_press(self):
+        if self._press_global_pos is None or self._dragging:
+            return
 
-    def _draw_settings_icon(self, painter: QPainter):
-        icon_rect = QRect(self._settings_rect.translated(-8, 0))
-        pixmap = self._settings_icon.pixmap(icon_rect.size())
-        if pixmap.isNull():
-            painter.setPen(
-                QPen(QColor(76, 86, 106), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-            )
-            painter.drawEllipse(icon_rect.adjusted(4, 4, -4, -4))
-            painter.drawPoint(icon_rect.center())
-        else:
-            painter.drawPixmap(icon_rect, pixmap)
-
-    def _action_at(self, pos: QPoint) -> str:
-        if self._settings_hit_rect.contains(pos):
-            return "settings"
-        if self._logo_rect.contains(pos):
-            return "logo"
-        if self._base_path().contains(pos):
-            return "drag"
-        return ""
-
-    def _update_cursor(self, pos: QPoint):
-        action = self._action_at(pos)
-        if action in {"settings", "logo"}:
-            self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        elif action == "drag":
-            self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
-        else:
-            self.unsetCursor()
-
-    def _update_tooltip(self):
-        self.setToolTip("通知已静音" if is_notifications_muted() else "通知正常")
+        self._long_press_triggered = True
+        self.show_settings_requested.emit()
 
     def _move_to_default_position(self):
         screen = screen_at(QCursor.pos())
@@ -195,7 +178,3 @@ class FloatingStatusBall(QWidget):
 
         geometry = screen.availableGeometry()
         self.move(geometry.right() - self.width() - 24, geometry.top() + 96)
-
-    @staticmethod
-    def _event_global_pos(event) -> QPoint:
-        return event_global_position(event)

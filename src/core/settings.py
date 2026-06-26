@@ -401,6 +401,10 @@ class Settings:
         return bool(self.get("Notify_Mask", True))
 
     @property
+    def show_status_ball(self) -> bool:
+        return bool(self.get("Show_Status_Ball", True))
+
+    @property
     def notify_label(self) -> str:
         result = self.get("Notify_Label", "xxtsoft QQListener")
         return str(result) if result else "xxtsoft QQListener"

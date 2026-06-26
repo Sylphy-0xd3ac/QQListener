@@ -102,12 +102,19 @@ from src.ui.fluent_compat import (
     Slider,
     SpinBox,
     SubtitleLabel,
+    SwitchButton,
 )
 
 from src.core.autostart import (
     is_auto_start_enabled,
     is_auto_start_supported,
     set_auto_start_enabled,
+)
+from src.core.notification_state import (
+    add_notification_state_listener,
+    is_notifications_muted,
+    remove_notification_state_listener,
+    toggle_notifications_muted,
 )
 from src.core.notification_engines import (
     ENGINE_CHOICES,
@@ -136,7 +143,16 @@ class SettingsWindow(FluentWindow):
         self.setAutoFillBackground(False)
 
         self.data = self.settings.get_all()
+        self._debug_click_count = 0
+        self._debug_page_unlocked = False
         self.init_ui()
+        self._notification_state_listener = self._on_notifications_muted_changed
+        add_notification_state_listener(self._notification_state_listener)
+        self.destroyed.connect(
+            lambda *_args: remove_notification_state_listener(
+                self._notification_state_listener
+            )
+        )
         self._polish_window_chrome()
 
     def resizeEvent(self, event):
@@ -243,10 +259,13 @@ class SettingsWindow(FluentWindow):
         status_row.setSpacing(14)
         status_row.addStretch()
 
-        self.home_status_badge = IconInfoBadge.success(FIF.ACCEPT_MEDIUM, page)
-        self.home_status_badge.setFixedSize(36, 36)
-        self.home_status_badge.setIconSize(QSize(18, 18))
-        status_row.addWidget(self.home_status_badge, alignment=Qt.AlignVCenter)
+        self.home_status_badge = None
+        self.home_status_badge_muted = None
+        self.home_status_badge_box = QWidget(page)
+        self.home_status_badge_box.setFixedSize(44, 44)
+        self.home_status_badge_box.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.home_status_badge_box.mousePressEvent = self._on_home_status_badge_pressed
+        status_row.addWidget(self.home_status_badge_box, alignment=Qt.AlignVCenter)
 
         status_text_layout = QVBoxLayout()
         status_text_layout.setSpacing(4)
@@ -261,6 +280,7 @@ class SettingsWindow(FluentWindow):
         status_row.addStretch()
         layout.addLayout(status_row)
         layout.addStretch()
+        self._refresh_notification_status()
         return page
 
     def _show_settings_interface(self):
@@ -291,6 +311,8 @@ class SettingsWindow(FluentWindow):
         layout.addWidget(self.settings_stack, 1)
 
         self._settings_pages = {}
+        self._settings_page_meta = {}
+        self._settings_pivot_routes = []
         for route_key, title, icon, content in [
             ("basic", self.tr("基本"), FIF.HOME, self._create_basic_tab()),
             (
@@ -307,7 +329,13 @@ class SettingsWindow(FluentWindow):
             ("debug", self.tr("调试"), FIF.CODE, self._create_debug_tab()),
             ("about", self.tr("关于"), FIF.INFO, self._create_about_tab()),
         ]:
-            self._add_settings_pivot_page(route_key, title, icon, content)
+            self._add_settings_pivot_page(
+                route_key,
+                title,
+                icon,
+                content,
+                visible=route_key != "debug",
+            )
 
         self._switch_settings_page("basic")
 
@@ -324,7 +352,14 @@ class SettingsWindow(FluentWindow):
         layout.addLayout(action_layout)
         return page
 
-    def _add_settings_pivot_page(self, route_key: str, title: str, icon: FIF, content: QWidget):
+    def _add_settings_pivot_page(
+        self,
+        route_key: str,
+        title: str,
+        icon: FIF,
+        content: QWidget,
+        visible: bool = True,
+    ):
         content.setObjectName(f"{route_key}Content")
         scroll_area = ScrollArea()
         scroll_area.setObjectName(f"{route_key}ScrollArea")
@@ -343,11 +378,27 @@ class SettingsWindow(FluentWindow):
         """)
         self.settings_stack.addWidget(scroll_area)
         self._settings_pages[route_key] = scroll_area
-        self.settings_pivot.addItem(
-            route_key,
-            title,
-            icon=icon,
-        )
+        self._settings_page_meta[route_key] = (title, icon)
+        if visible:
+            self._add_settings_pivot_item(route_key, title, icon)
+
+    def _add_settings_pivot_item(
+        self,
+        route_key: str,
+        title: str,
+        icon: FIF,
+        insert_index: int | None = None,
+    ):
+        if route_key in self._settings_pivot_routes:
+            return
+
+        if insert_index is None or insert_index >= len(self._settings_pivot_routes):
+            self.settings_pivot.addItem(route_key, title, icon=icon)
+            self._settings_pivot_routes.append(route_key)
+            return
+
+        self.settings_pivot.insertItem(insert_index, route_key, title, icon=icon)
+        self._settings_pivot_routes.insert(insert_index, route_key)
 
     def _switch_settings_page(self, route_key: str):
         self.settings_pivot.setCurrentItem(route_key)
@@ -366,10 +417,83 @@ class SettingsWindow(FluentWindow):
 
         engine_label = self._current_engine_label()
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
-        self.home_status_title.setText(self.tr("正在运行"))
         self.home_status_detail.setText(
             self.tr("引擎: {engine}  QQ号: {qq}").format(engine=engine_label, qq=user_qq)
         )
+        self._refresh_notification_status()
+
+    def _refresh_notification_status(self, muted: bool | None = None):
+        if not hasattr(self, "home_status_title"):
+            return
+
+        muted = is_notifications_muted() if muted is None else muted
+        self.home_status_title.setText(self.tr("已暂停") if muted else self.tr("正在运行"))
+        self._refresh_home_status_badge(muted)
+
+    def _refresh_home_status_badge(self, muted: bool):
+        if not hasattr(self, "home_status_badge_box"):
+            return
+
+        if self.home_status_badge is not None and self.home_status_badge_muted == muted:
+            return
+
+        if self.home_status_badge is not None:
+            self.home_status_badge.setParent(None)
+            self.home_status_badge.deleteLater()
+
+        self.home_status_badge = (
+            IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
+            if muted
+            else IconInfoBadge.success(FIF.ACCEPT_MEDIUM, self.home_status_badge_box)
+        )
+        self.home_status_badge_muted = muted
+        self.home_status_badge.setFixedSize(36, 36)
+        self.home_status_badge.setIconSize(QSize(18, 18))
+        self.home_status_badge.move(4, 4)
+        self.home_status_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.home_status_badge.mousePressEvent = self._on_home_status_badge_pressed
+        self.home_status_badge.setToolTip(
+            self.tr("点击恢复通知") if muted else self.tr("点击暂停通知")
+        )
+        self.home_status_badge.show()
+
+    def _on_home_status_badge_pressed(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        toggle_notifications_muted()
+        event.accept()
+
+    def _on_notifications_muted_changed(self, muted: bool):
+        self._refresh_notification_status(muted)
+
+    def _on_version_label_clicked(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        if self._debug_page_unlocked:
+            self._switch_settings_page("debug")
+            event.accept()
+            return
+
+        self._debug_click_count += 1
+        if self._debug_click_count >= 7:
+            self._unlock_debug_page()
+            self._switch_settings_page("debug")
+        event.accept()
+
+    def _unlock_debug_page(self):
+        if self._debug_page_unlocked:
+            return
+
+        self._debug_page_unlocked = True
+        title, icon = self._settings_page_meta["debug"]
+        insert_index = (
+            self._settings_pivot_routes.index("about")
+            if "about" in self._settings_pivot_routes
+            else len(self._settings_pivot_routes)
+        )
+        self._add_settings_pivot_item("debug", title, icon, insert_index)
 
     def _config_status(self) -> tuple[bool, list[str]]:
         missing = []
@@ -615,6 +739,11 @@ class SettingsWindow(FluentWindow):
         )
         self.notify_mask = CheckBox(self.tr("通知窗口启用遮罩"))
         self.notify_mask.setChecked(self.data.get("Notify_Mask", self.settings.notify_mask))
+        self.show_status_ball = SwitchButton()
+        self.show_status_ball.setText(self.tr("显示悬浮球"))
+        self.show_status_ball.setChecked(
+            self.data.get("Show_Status_Ball", self.settings.show_status_ball)
+        )
         self.notify_label = self._line_edit(
             self.data.get("Notify_Label", self.settings.notify_label)
         )
@@ -662,6 +791,7 @@ class SettingsWindow(FluentWindow):
         layout.addWidget(self.notify_shadow)
         layout.addWidget(self.notify_animation)
         layout.addWidget(self.notify_mask)
+        layout.addWidget(self.show_status_ball)
         layout.addWidget(QLabel(self.tr("通知下方显示文本（可留空）")))
         layout.addWidget(self.notify_label)
         layout.addWidget(QLabel(self.tr("通知收到按钮图标")))
@@ -902,6 +1032,8 @@ class SettingsWindow(FluentWindow):
         self.title.setStyleSheet("font-size: 20px; font-weight: 600;")
         self.subtitle = QLabel(self.tr("最好的QQ通知监控软件 - 班级群监控神器 v1.1 20260319"))
         self.subtitle.setStyleSheet("font-size: 16px")
+        self.subtitle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.subtitle.mousePressEvent = self._on_version_label_clicked
 
         self.author_title = QLabel(
             self.tr(
@@ -1206,6 +1338,7 @@ class SettingsWindow(FluentWindow):
                 "Notify_Shadow": self.notify_shadow.isChecked(),
                 "Notify_Animation": self.notify_animation.isChecked(),
                 "Notify_Label": self.notify_label.text(),
+                "Show_Status_Ball": self.show_status_ball.isChecked(),
                 "Someone_At_Me": self.someone_at_me.isChecked(),
                 "Calling": self.calling.isChecked(),
                 "Calling_Keyword": self.calling_keyword.text(),

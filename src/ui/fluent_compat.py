@@ -18,4 +18,5 @@ from qfluentwidgets import (
     Slider,
     SpinBox,
     SubtitleLabel,
+    SwitchButton,
 )

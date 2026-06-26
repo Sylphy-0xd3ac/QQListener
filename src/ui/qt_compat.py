@@ -121,9 +121,17 @@ def _patch_pyside2_namespaces() -> None:
         {
             "WA_TranslucentBackground": Qt.WA_TranslucentBackground,
             "WA_ShowWithoutActivating": getattr(Qt, "WA_ShowWithoutActivating", 98),
+            "WA_TransparentForMouseEvents": Qt.WA_TransparentForMouseEvents,
         },
     )
-    _ensure_namespace(Qt, "MouseButton", {"LeftButton": Qt.LeftButton})
+    _ensure_namespace(
+        Qt,
+        "MouseButton",
+        {
+            "LeftButton": Qt.LeftButton,
+            "RightButton": Qt.RightButton,
+        },
+    )
     _ensure_namespace(
         Qt,
         "CursorShape",
