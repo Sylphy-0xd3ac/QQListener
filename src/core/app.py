@@ -4,7 +4,11 @@ Path = pathlib.Path
 import sys
 import tempfile
 
-import pygame
+import src.utils.filtered_print
+
+with src.utils.filtered_print.filtered_print():
+    import pygame
+
 from loguru import logger
 
 from src.core.logging import setup_logging
@@ -212,9 +216,7 @@ class QQListenerApp:
         try:
             if self.settings_window is None:
                 self.settings_window = SettingsWindow()
-                self.settings_window.setWindowIcon(
-                    load_icon(app_icon_path(), app_icon_png_path())
-                )
+                self.settings_window.setWindowIcon(load_icon(app_icon_path(), app_icon_png_path()))
 
             self.settings_window.showNormal()
             self.settings_window.raise_()
@@ -226,9 +228,7 @@ class QQListenerApp:
         except RuntimeError:
             logger.warning("设置窗口对象失效，正在重建")
             self.settings_window = SettingsWindow()
-            self.settings_window.setWindowIcon(
-                load_icon(app_icon_path(), app_icon_png_path())
-            )
+            self.settings_window.setWindowIcon(load_icon(app_icon_path(), app_icon_png_path()))
             self.settings_window.showNormal()
             self.settings_window.raise_()
             self.settings_window.activateWindow()
