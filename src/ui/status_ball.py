@@ -6,20 +6,21 @@ from src.core.notification_state import (
     remove_notification_state_listener,
     toggle_notifications_muted,
 )
-from src.ui.fluent_compat import FluentIcon as FIF, IconInfoBadge
+from src.core.resources import app_icon_path, app_icon_png_path
 from src.ui.qt_compat import (
     QColor,
     QCursor,
     QPainter,
     QPen,
     QPoint,
+    QRect,
     QRectF,
-    QSize,
     Qt,
     QTimer,
     Signal,
     QWidget,
     event_global_position,
+    load_icon,
     screen_at,
 )
 
@@ -42,8 +43,8 @@ class FloatingStatusBall(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-        self._badge: IconInfoBadge | None = None
-        self._badge_muted: bool | None = None
+        self._logo_icon = load_icon(app_icon_path(), app_icon_png_path())
+        self._logo_rect = QRect(11, 11, 28, 28)
         self._press_global_pos: QPoint | None = None
         self._press_window_pos: QPoint | None = None
         self._dragging = False
@@ -84,6 +85,8 @@ class FloatingStatusBall(QWidget):
         painter.setBrush(QColor(255, 255, 255))
         painter.setPen(QPen(QColor(214, 220, 230), 1))
         painter.drawEllipse(base)
+
+        self._draw_logo(painter)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.RightButton:
@@ -138,31 +141,29 @@ class FloatingStatusBall(QWidget):
     def refresh_state(self):
         muted = is_notifications_muted()
         self.setToolTip("已暂停" if muted else "通知已启用")
-        self._refresh_badge(muted)
         self.update()
 
     def _on_notifications_muted_changed(self, _muted: bool):
         self.refresh_state()
 
-    def _refresh_badge(self, muted: bool):
-        if self._badge is not None and self._badge_muted == muted:
-            return
+    def _draw_logo(self, painter: QPainter):
+        pixmap = self._logo_icon.pixmap(self._logo_rect.size())
+        if pixmap.isNull():
+            painter.setPen(QPen(QColor(26, 30, 38), 1))
+            painter.drawText(self._logo_rect, Qt.AlignmentFlag.AlignCenter, "Q")
+        else:
+            painter.drawPixmap(self._logo_rect, pixmap)
 
-        if self._badge is not None:
-            self._badge.setParent(None)
-            self._badge.deleteLater()
-
-        self._badge = (
-            IconInfoBadge.error(FIF.CLOSE, self)
-            if muted
-            else IconInfoBadge.success(FIF.ACCEPT_MEDIUM, self)
-        )
-        self._badge_muted = muted
-        self._badge.setFixedSize(34, 34)
-        self._badge.setIconSize(QSize(18, 18))
-        self._badge.move((self.width() - 34) // 2, (self.height() - 34) // 2)
-        self._badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._badge.show()
+        if is_notifications_muted():
+            painter.setPen(
+                QPen(QColor(225, 29, 72), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            )
+            painter.drawLine(
+                self._logo_rect.right() - 1,
+                self._logo_rect.top() + 1,
+                self._logo_rect.left() + 1,
+                self._logo_rect.bottom() - 1,
+            )
 
     def _trigger_long_press(self):
         if self._press_global_pos is None or self._dragging:
