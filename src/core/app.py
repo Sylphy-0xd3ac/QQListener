@@ -11,8 +11,8 @@ with src.utils.filtered_print.filtered_print():
 
 from loguru import logger
 
+from src.core.core_controller import is_core_running, unload_core
 from src.core.logging import setup_logging
-from src.core.notification_state import is_notifications_muted
 from src.core.resources import app_icon_path, app_icon_png_path
 from src.core.settings import get_settings
 from src.core.signals import get_signals
@@ -263,6 +263,7 @@ class QQListenerApp:
         if self.status_ball is None:
             self.status_ball = FloatingStatusBall()
             self.status_ball.show_settings_requested.connect(self.show_settings)
+            self.status_ball.unload_requested.connect(self._request_unload_core)
 
         self.status_ball.refresh_state()
         if not self.status_ball.isVisible():
@@ -285,9 +286,21 @@ class QQListenerApp:
         self.worker = self._create_worker()
         self.worker.start()
 
+    def _request_unload_core(self):
+        parent = self.settings_window if self.settings_window is not None else None
+        confirmed = show_fluent_message(
+            parent,
+            "卸载核心",
+            "将从 QQ 进程卸载注入的钩子，需重新启动核心才能恢复监听。确定卸载？",
+            yes_text="卸载",
+            cancel_text="取消",
+        )
+        if confirmed:
+            unload_core()
+
     def push_notification(self, data: dict):
-        if is_notifications_muted():
-            logger.debug("通知已静音，跳过显示")
+        if not is_core_running():
+            logger.debug("核心未运行，跳过通知显示")
             return
 
         try:

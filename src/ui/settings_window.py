@@ -22,6 +22,7 @@ from src.ui.qt_compat import (
     QSize,
     QStackedWidget,
     Qt,
+    QTimer,
     QTranslator,
     QVBoxLayout,
     QWidget,
@@ -110,11 +111,13 @@ from src.core.autostart import (
     is_auto_start_supported,
     set_auto_start_enabled,
 )
-from src.core.notification_state import (
-    add_notification_state_listener,
-    is_notifications_muted,
-    remove_notification_state_listener,
-    toggle_notifications_muted,
+from src.core.core_controller import (
+    CoreState,
+    add_core_state_listener,
+    get_core_state,
+    remove_core_state_listener,
+    toggle_core,
+    unload_core,
 )
 from src.core.notification_engines import (
     ENGINE_CHOICES,
@@ -146,13 +149,15 @@ class SettingsWindow(FluentWindow):
         self._debug_click_count = 0
         self._debug_page_unlocked = False
         self.init_ui()
-        self._notification_state_listener = self._on_notifications_muted_changed
-        add_notification_state_listener(self._notification_state_listener)
+        self._core_state_listener = self._on_core_state_changed
+        add_core_state_listener(self._core_state_listener)
         self.destroyed.connect(
-            lambda *_args: remove_notification_state_listener(
-                self._notification_state_listener
-            )
+            lambda *_args: remove_core_state_listener(self._core_state_listener)
         )
+        self._badge_long_press_timer = QTimer(self)
+        self._badge_long_press_timer.setSingleShot(True)
+        self._badge_long_press_timer.timeout.connect(self._on_badge_long_press)
+        self._badge_long_pressed = False
         self._polish_window_chrome()
 
     def resizeEvent(self, event):
@@ -260,11 +265,12 @@ class SettingsWindow(FluentWindow):
         status_row.addStretch()
 
         self.home_status_badge = None
-        self.home_status_badge_muted = None
+        self.home_status_badge_state = None
         self.home_status_badge_box = QWidget(page)
         self.home_status_badge_box.setFixedSize(44, 44)
         self.home_status_badge_box.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.home_status_badge_box.mousePressEvent = self._on_home_status_badge_pressed
+        self.home_status_badge_box.mousePressEvent = self._on_badge_pressed
+        self.home_status_badge_box.mouseReleaseEvent = self._on_badge_released
         status_row.addWidget(self.home_status_badge_box, alignment=Qt.AlignVCenter)
 
         status_text_layout = QVBoxLayout()
@@ -422,50 +428,82 @@ class SettingsWindow(FluentWindow):
         )
         self._refresh_notification_status()
 
-    def _refresh_notification_status(self, muted: bool | None = None):
+    _CORE_STATE_TITLE = {
+        CoreState.RUNNING: "正在运行",
+        CoreState.PAUSED: "已暂停",
+        CoreState.DETACHED: "核心未启动",
+    }
+
+    def _refresh_notification_status(self, state: CoreState | None = None):
         if not hasattr(self, "home_status_title"):
             return
 
-        muted = is_notifications_muted() if muted is None else muted
-        self.home_status_title.setText(self.tr("已暂停") if muted else self.tr("正在运行"))
-        self._refresh_home_status_badge(muted)
+        state = get_core_state() if state is None else state
+        self.home_status_title.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
+        self._refresh_home_status_badge(state)
 
-    def _refresh_home_status_badge(self, muted: bool):
+    def _refresh_home_status_badge(self, state: CoreState):
         if not hasattr(self, "home_status_badge_box"):
             return
 
-        if self.home_status_badge is not None and self.home_status_badge_muted == muted:
+        if self.home_status_badge is not None and self.home_status_badge_state == state:
             return
 
         if self.home_status_badge is not None:
             self.home_status_badge.setParent(None)
             self.home_status_badge.deleteLater()
 
-        self.home_status_badge = (
-            IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
-            if muted
-            else IconInfoBadge.success(FIF.ACCEPT_MEDIUM, self.home_status_badge_box)
-        )
-        self.home_status_badge_muted = muted
+        if state == CoreState.RUNNING:
+            self.home_status_badge = IconInfoBadge.success(
+                FIF.ACCEPT_MEDIUM, self.home_status_badge_box
+            )
+            tooltip = self.tr("核心运行中（单击暂停，长按卸载）")
+        elif state == CoreState.PAUSED:
+            self.home_status_badge = IconInfoBadge.warning(FIF.PAUSE, self.home_status_badge_box)
+            tooltip = self.tr("核心已暂停（单击恢复，长按卸载）")
+        else:
+            self.home_status_badge = IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
+            tooltip = self.tr("核心未启动（单击启动）")
+
+        self.home_status_badge_state = state
         self.home_status_badge.setFixedSize(36, 36)
         self.home_status_badge.setIconSize(QSize(18, 18))
         self.home_status_badge.move(4, 4)
         self.home_status_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.home_status_badge.mousePressEvent = self._on_home_status_badge_pressed
-        self.home_status_badge.setToolTip(
-            self.tr("点击恢复通知") if muted else self.tr("点击暂停通知")
-        )
+        self.home_status_badge.mousePressEvent = self._on_badge_pressed
+        self.home_status_badge.mouseReleaseEvent = self._on_badge_released
+        self.home_status_badge.setToolTip(tooltip)
         self.home_status_badge.show()
 
-    def _on_home_status_badge_pressed(self, event):
+    def _on_badge_pressed(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             return
-
-        toggle_notifications_muted()
+        self._badge_long_pressed = False
+        self._badge_long_press_timer.start(650)
         event.accept()
 
-    def _on_notifications_muted_changed(self, muted: bool):
-        self._refresh_notification_status(muted)
+    def _on_badge_released(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        self._badge_long_press_timer.stop()
+        if not self._badge_long_pressed:
+            toggle_core()
+        event.accept()
+
+    def _on_badge_long_press(self):
+        self._badge_long_pressed = True
+        confirmed = show_fluent_message(
+            self,
+            self.tr("卸载核心"),
+            self.tr("将从 QQ 进程卸载注入的钩子，需重新启动核心才能恢复监听。确定卸载？"),
+            yes_text=self.tr("卸载"),
+            cancel_text=self.tr("取消"),
+        )
+        if confirmed:
+            unload_core()
+
+    def _on_core_state_changed(self, state: CoreState):
+        self._refresh_notification_status(state)
 
     def _on_version_label_clicked(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
