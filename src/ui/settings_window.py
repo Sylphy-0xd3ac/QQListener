@@ -20,10 +20,12 @@ from src.ui.qt_compat import (
     QSize,
     QStackedWidget,
     Qt,
+    QThread,
     QTimer,
     QTranslator,
     QVBoxLayout,
     QWidget,
+    Signal,
 )
 
 
@@ -94,6 +96,12 @@ from src.core.core_controller import (
     toggle_core,
     unload_core,
 )
+from src.core.core_updater import (
+    check_update,
+    current_core_version,
+    download_and_install,
+    is_core_installed,
+)
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.ui.fluent_compat import (
@@ -121,6 +129,28 @@ from src.ui.fluent_compat import (
 )
 from src.ui.fluent_dialog import show_fluent_message
 from src.utils.tts import set_system_volume_max
+
+
+class _CoreUpdateThread(QThread):
+    """后台执行内核检查/安装，避免阻塞 UI。"""
+
+    checked = Signal(object)  # UpdateStatus
+    installed = Signal(str)  # 已装版本
+    failed = Signal(str)
+
+    def __init__(self, mode: str, proxy: str | None = None, parent=None):
+        super().__init__(parent)
+        self._mode = mode
+        self._proxy = proxy
+
+    def run(self):
+        try:
+            if self._mode == "check":
+                self.checked.emit(check_update())
+            else:
+                self.installed.emit(download_and_install(proxy=self._proxy))
+        except Exception as exc:  # noqa: BLE001 — 面向用户的错误消息
+            self.failed.emit(str(exc))
 
 
 class SettingsWindow(FluentWindow):
@@ -311,6 +341,7 @@ class SettingsWindow(FluentWindow):
         self._settings_pivot_routes = []
         for route_key, title, icon, content in [
             ("basic", self.tr("基本"), FIF.HOME, self._create_basic_tab()),
+            ("core", self.tr("核心"), FIF.IOT, self._create_core_tab()),
             ("rule", self.tr("规则"), FIF.CHECKBOX, self._create_rule_tab()),
             ("appearance", self.tr("外观"), FIF.PALETTE, self._create_appearance_tab()),
             ("notify", self.tr("通知"), FIF.MESSAGE, self._create_notify_tab()),
@@ -485,6 +516,107 @@ class SettingsWindow(FluentWindow):
 
     def _on_core_state_changed(self, state: CoreState):
         self._refresh_notification_status(state)
+        if hasattr(self, "core_status_value"):
+            self.core_status_value.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
+
+    def _create_core_tab(self):
+        """核心（SnowLuma 内核）管理页：状态、版本、检查更新。"""
+        widget = QWidget()
+        form = QFormLayout(widget)
+
+        self.core_status_value = CaptionLabel(
+            self.tr(self._CORE_STATE_TITLE.get(get_core_state(), "正在运行"))
+        )
+        self.core_version_value = CaptionLabel(self._core_version_text())
+
+        self.core_proxy_edit = self._line_edit(
+            self.data.get("Core_Download_Proxy", "")
+        )
+        self.core_proxy_edit.setPlaceholderText(
+            self.tr("留空走 GitHub 官方；国内可填第三方代理，如 https://ghproxy.com")
+        )
+
+        self.core_check_btn = PrimaryPushButton(self.tr("检查更新"))
+        self.core_check_btn.clicked.connect(self._on_check_core_update)
+
+        self.core_update_result = CaptionLabel("")
+        self.core_update_result.setWordWrap(True)
+        self.core_update_result.setStyleSheet("color: #707070;")
+
+        hint = QLabel(
+            self.tr(
+                "内核为 SnowLuma 官方发布的专有组件，仅从官方 release 下载、不随本程序分发。"
+            )
+        )
+        hint.setWordWrap(True)
+
+        form.addRow(self.tr("核心状态"), self.core_status_value)
+        form.addRow(self.tr("内核版本"), self.core_version_value)
+        form.addRow(self.tr("下载源代理"), self.core_proxy_edit)
+        form.addRow(self.core_check_btn)
+        form.addRow(self.core_update_result)
+        form.addRow(hint)
+
+        return widget
+
+    def _core_version_text(self) -> str:
+        if not is_core_installed():
+            return self.tr("未安装")
+        version = current_core_version()
+        return version or self.tr("已安装（版本未知）")
+
+    def _on_check_core_update(self):
+        self.core_check_btn.setEnabled(False)
+        self.core_update_result.setText(self.tr("正在检查更新…"))
+        self._core_thread = _CoreUpdateThread("check", parent=self)
+        self._core_thread.checked.connect(self._on_core_update_checked)
+        self._core_thread.failed.connect(self._on_core_update_failed)
+        self._core_thread.start()
+
+    def _on_core_update_checked(self, status):
+        if status.error:
+            self.core_update_result.setText(self.tr("检查失败: {err}").format(err=status.error))
+            self.core_check_btn.setEnabled(True)
+            return
+
+        if not status.has_update and status.installed:
+            self.core_update_result.setText(
+                self.tr("已是最新: {ver}").format(ver=status.current_version or status.latest_version)
+            )
+            self.core_check_btn.setEnabled(True)
+            return
+
+        action = self.tr("安装") if not status.installed else self.tr("更新")
+        confirmed = show_fluent_message(
+            self,
+            self.tr("{action}内核").format(action=action),
+            self.tr(
+                "将从 SnowLuma 官方 release 下载内核 {ver}。\n"
+                "该组件为 SnowLuma 专有，使用即表示遵守其许可。是否继续？"
+            ).format(ver=status.latest_version),
+            yes_text=action,
+            cancel_text=self.tr("取消"),
+        )
+        if not confirmed:
+            self.core_update_result.setText("")
+            self.core_check_btn.setEnabled(True)
+            return
+
+        self.core_update_result.setText(self.tr("正在下载安装…"))
+        proxy = self.core_proxy_edit.text().strip() or None
+        self._core_thread = _CoreUpdateThread("install", proxy=proxy, parent=self)
+        self._core_thread.installed.connect(self._on_core_update_installed)
+        self._core_thread.failed.connect(self._on_core_update_failed)
+        self._core_thread.start()
+
+    def _on_core_update_installed(self, version: str):
+        self.core_version_value.setText(self._core_version_text())
+        self.core_update_result.setText(self.tr("已安装: {ver}").format(ver=version))
+        self.core_check_btn.setEnabled(True)
+
+    def _on_core_update_failed(self, message: str):
+        self.core_update_result.setText(self.tr("失败: {msg}").format(msg=message))
+        self.core_check_btn.setEnabled(True)
 
     def _on_version_label_clicked(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
@@ -1163,6 +1295,7 @@ class SettingsWindow(FluentWindow):
                 "Cooldown": self.cooldown.value(),
                 "Auto_Start": auto_start_enabled,
                 "User_QQ": self.user_qq.text(),
+                "Core_Download_Proxy": self.core_proxy_edit.text().strip(),
                 "Important_Persons": self._get_list(self.list_persons),
                 "Important_Keywords": self._get_list(self.list_keywords),
                 "BlackList": self._get_list(self.list_black),
