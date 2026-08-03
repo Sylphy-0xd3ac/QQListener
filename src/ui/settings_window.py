@@ -81,28 +81,6 @@ def _patch_macos_frameless_window() -> None:
 
 _patch_macos_frameless_window()
 
-from src.ui.fluent_compat import (
-    CaptionLabel,
-    CheckBox,
-    ComboBox,
-    DoubleSpinBox,
-    EditableComboBox,
-    FluentIcon as FIF,
-    FluentWindow,
-    IconInfoBadge,
-    LineEdit,
-    ListWidget,
-    NavigationItemPosition,
-    Pivot,
-    PrimaryPushButton,
-    PushButton,
-    ScrollArea,
-    Slider,
-    SpinBox,
-    SubtitleLabel,
-    SwitchButton,
-)
-
 from src.core.autostart import (
     is_auto_start_enabled,
     is_auto_start_supported,
@@ -118,6 +96,29 @@ from src.core.core_controller import (
 )
 from src.core.settings import get_settings
 from src.core.signals import get_signals
+from src.ui.fluent_compat import (
+    CaptionLabel,
+    CheckBox,
+    ComboBox,
+    DoubleSpinBox,
+    EditableComboBox,
+    FluentWindow,
+    IconInfoBadge,
+    LineEdit,
+    ListWidget,
+    NavigationItemPosition,
+    Pivot,
+    PrimaryPushButton,
+    PushButton,
+    ScrollArea,
+    Slider,
+    SpinBox,
+    SubtitleLabel,
+    SwitchButton,
+)
+from src.ui.fluent_compat import (
+    FluentIcon as FIF,
+)
 from src.ui.fluent_dialog import show_fluent_message
 from src.utils.tts import set_system_volume_max
 
@@ -517,20 +518,11 @@ class SettingsWindow(FluentWindow):
         missing = []
         if not self.data.get("User_QQ", ""):
             missing.append(self.tr("未填写 QQ 号"))
-        tencent_path = self.data.get("Tencent_Files_Path", "")
-        if not tencent_path:
-            missing.append(self.tr("未设置聊天信息保存文件夹"))
-        elif not os.path.isdir(tencent_path):
-            missing.append(self.tr("聊天信息保存文件夹不存在"))
         return not missing, missing
 
     def _home_summary_rows(self, status_items: list[str]) -> list[tuple[str, str]]:
         return [
             (self.tr("QQ 号"), self.data.get("User_QQ", "") or self.tr("未填写")),
-            (
-                self.tr("聊天信息保存文件夹"),
-                self.data.get("Tencent_Files_Path", "") or self.tr("未设置"),
-            ),
             (
                 self.tr("重要人物"),
                 str(len(self.data.get("Important_Persons", self.settings.important_persons))),
@@ -560,23 +552,6 @@ class SettingsWindow(FluentWindow):
 
         self.user_qq = self._line_edit(self.data.get("User_QQ", ""))
 
-        self.tencent_path = self._line_edit(self.data.get("Tencent_Files_Path", ""))
-        btn_path = PushButton(self.tr("浏览"))
-        btn_path.clicked.connect(self._select_path)
-
-        path_row = QHBoxLayout()
-        path_row.addWidget(self.tencent_path)
-        path_row.addWidget(btn_path)
-
-        self.whereis_tencentfile = QLabel(self.tr("我的聊天信息保存在哪里？"))
-        self.whereis_tencentfile.mousePressEvent = lambda event: show_fluent_message(
-            self,
-            self.tr("提示"),
-            self.tr(
-                '打开 QQ 主面板，点击左下角设置，在存储设置选项卡中显示"聊天消息默认保存到..."'
-            ),
-        )
-
         self.language_combo = ComboBox()
         self.language_combo.addItems([self.tr("English"), self.tr("日本語"), self.tr("简体中文")])
         self.language_combo.currentIndexChanged.connect(self._on_language_changed)
@@ -602,8 +577,6 @@ class SettingsWindow(FluentWindow):
         form.addRow(self.tr("扫描间隔 (秒)"), self.scan_interval)
         form.addRow(self.tr("冷却时间 (秒)"), self.cooldown)
         form.addRow(self.tr("QQ 号"), self.user_qq)
-        form.addRow(self.tr("聊天信息保存文件夹"), path_row)
-        form.addRow(self.whereis_tencentfile)
         form.addRow(self.tr("界面语言"), self.language_combo)
         form.addRow(self.auto_start)
 
@@ -1036,12 +1009,6 @@ class SettingsWindow(FluentWindow):
         list_widget = container.list_widget
         return [list_widget.item(i).text() for i in range(list_widget.count())]
 
-    def _select_path(self):
-        """选择文件夹"""
-        path = QFileDialog.getExistingDirectory(self, self.tr("选择文件夹"))
-        if path:
-            self.tencent_path.setText(path)
-
     def _select_file(self, line):
         """选择文件"""
         path, _ = QFileDialog.getOpenFileName(self, self.tr("选择文件"))
@@ -1195,7 +1162,6 @@ class SettingsWindow(FluentWindow):
                 "ScanInterval": self.scan_interval.value(),
                 "Cooldown": self.cooldown.value(),
                 "Auto_Start": auto_start_enabled,
-                "Tencent_Files_Path": self.tencent_path.text(),
                 "User_QQ": self.user_qq.text(),
                 "Important_Persons": self._get_list(self.list_persons),
                 "Important_Keywords": self._get_list(self.list_keywords),
