@@ -7,7 +7,6 @@ import webbrowser
 import pygame
 from loguru import logger
 
-from src.core.resources import resource_path
 from src.ui.qt_compat import (
     QApplication,
     QColor,
@@ -16,7 +15,6 @@ from src.ui.qt_compat import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPainter,
     QRectF,
     QSize,
@@ -26,7 +24,6 @@ from src.ui.qt_compat import (
     QTranslator,
     QVBoxLayout,
     QWidget,
-    load_icon,
 )
 
 
@@ -118,11 +115,6 @@ from src.core.core_controller import (
     remove_core_state_listener,
     toggle_core,
     unload_core,
-)
-from src.core.notification_engines import (
-    ENGINE_CHOICES,
-    ENGINE_ONEBOT_V11,
-    normalize_notification_engine,
 )
 from src.core.settings import get_settings
 from src.core.signals import get_signals
@@ -257,7 +249,6 @@ class SettingsWindow(FluentWindow):
         layout.setSpacing(24)
         layout.addStretch()
 
-        engine_label = self._current_engine_label()
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
 
         status_row = QHBoxLayout()
@@ -276,9 +267,7 @@ class SettingsWindow(FluentWindow):
         status_text_layout = QVBoxLayout()
         status_text_layout.setSpacing(4)
         self.home_status_title = SubtitleLabel(self.tr("正在运行"))
-        self.home_status_detail = CaptionLabel(
-            self.tr("引擎: {engine}  QQ号: {qq}").format(engine=engine_label, qq=user_qq)
-        )
+        self.home_status_detail = CaptionLabel(self.tr("QQ号: {qq}").format(qq=user_qq))
         self.home_status_detail.setStyleSheet("color: #707070;")
         status_text_layout.addWidget(self.home_status_title)
         status_text_layout.addWidget(self.home_status_detail)
@@ -321,12 +310,6 @@ class SettingsWindow(FluentWindow):
         self._settings_pivot_routes = []
         for route_key, title, icon, content in [
             ("basic", self.tr("基本"), FIF.HOME, self._create_basic_tab()),
-            (
-                "engine",
-                self.tr("引擎"),
-                load_icon(resource_path("asset", "engine.svg")),
-                self._create_engine_tab(),
-            ),
             ("rule", self.tr("规则"), FIF.CHECKBOX, self._create_rule_tab()),
             ("appearance", self.tr("外观"), FIF.PALETTE, self._create_appearance_tab()),
             ("notify", self.tr("通知"), FIF.MESSAGE, self._create_notify_tab()),
@@ -421,11 +404,8 @@ class SettingsWindow(FluentWindow):
         if not hasattr(self, "home_status_detail"):
             return
 
-        engine_label = self._current_engine_label()
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
-        self.home_status_detail.setText(
-            self.tr("引擎: {engine}  QQ号: {qq}").format(engine=engine_label, qq=user_qq)
-        )
+        self.home_status_detail.setText(self.tr("QQ号: {qq}").format(qq=user_qq))
         self._refresh_notification_status()
 
     _CORE_STATE_TITLE = {
@@ -545,14 +525,12 @@ class SettingsWindow(FluentWindow):
         return not missing, missing
 
     def _home_summary_rows(self, status_items: list[str]) -> list[tuple[str, str]]:
-        engine_label = self._current_engine_label()
         return [
             (self.tr("QQ 号"), self.data.get("User_QQ", "") or self.tr("未填写")),
             (
                 self.tr("聊天信息保存文件夹"),
                 self.data.get("Tencent_Files_Path", "") or self.tr("未设置"),
             ),
-            (self.tr("通知监听引擎"), engine_label),
             (
                 self.tr("重要人物"),
                 str(len(self.data.get("Important_Persons", self.settings.important_persons))),
@@ -566,16 +544,6 @@ class SettingsWindow(FluentWindow):
                 self.tr("正常") if not status_items else "，".join(status_items),
             ),
         ]
-
-    def _current_engine_label(self) -> str:
-        engine = normalize_notification_engine(
-            self.data.get("NotificationEngine", self.settings.notification_engine),
-            legacy_uia=self.data.get("UIAMode", self.settings.uia_mode),
-        )
-        return next(
-            (self.tr(label) for key, label in ENGINE_CHOICES if key == engine),
-            self.tr("自动选择"),
-        )
 
     def _create_basic_tab(self):
         """基本设置标签页"""
@@ -640,95 +608,6 @@ class SettingsWindow(FluentWindow):
         form.addRow(self.auto_start)
 
         return widget
-
-    def _create_engine_tab(self):
-        """引擎配置标签页"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(18)
-
-        form = QFormLayout()
-        layout.addLayout(form)
-
-        self.notification_engine_choices = list(ENGINE_CHOICES)
-        self.notification_engine = ComboBox()
-        for key, label in ENGINE_CHOICES:
-            self.notification_engine.addItem(self.tr(label))
-        engine = normalize_notification_engine(
-            self.data.get("NotificationEngine", self.settings.notification_engine),
-            legacy_uia=self.data.get("UIAMode", self.settings.uia_mode),
-        )
-        engine_index = next(
-            (
-                index
-                for index, (key, _) in enumerate(self.notification_engine_choices)
-                if key == engine
-            ),
-            0,
-        )
-        self.notification_engine.setCurrentIndex(max(engine_index, 0))
-        self.notification_engine.currentIndexChanged.connect(self._sync_engine_config_visibility)
-
-        form.addRow(self.tr("通知监听引擎"), self.notification_engine)
-
-        self.onebot_engine_panel = QWidget()
-        onebot_form = QFormLayout(self.onebot_engine_panel)
-        onebot_title = SubtitleLabel(self.tr("OneBot V11（正向 WebSocket）"))
-        onebot_hint = QLabel(
-            self.tr(
-                "填写 OneBot 协议端暴露的正向 WebSocket 地址。常见地址为 ws://127.0.0.1:8080/event；若协议端配置了 access_token，请在 Token 中填写同一个值。"
-            )
-        )
-        onebot_hint.setWordWrap(True)
-
-        self.onebot_v11_ws_url = self._line_edit(
-            self.data.get("OneBotV11_WS_URL", self.settings.onebot_v11_ws_url)
-        )
-        self.onebot_v11_token = self._line_edit(
-            self.data.get("OneBotV11_Access_Token", self.settings.onebot_v11_token)
-        )
-        self.onebot_v11_token.setEchoMode(QLineEdit.EchoMode.Password)
-
-        onebot_form.addRow(onebot_title)
-        onebot_form.addRow(onebot_hint)
-        onebot_form.addRow(self.tr("WS 地址"), self.onebot_v11_ws_url)
-        onebot_form.addRow(self.tr("Token"), self.onebot_v11_token)
-        layout.addWidget(self.onebot_engine_panel)
-
-        layout.addStretch()
-
-        self._sync_engine_config_visibility()
-
-        return widget
-
-    def _selected_engine_key(self) -> str:
-        if not hasattr(self, "notification_engine"):
-            return normalize_notification_engine(self.settings.notification_engine)
-
-        index = self.notification_engine.currentIndex()
-        if 0 <= index < len(self.notification_engine_choices):
-            return self.notification_engine_choices[index][0]
-        return "auto"
-
-    def _sync_engine_config_visibility(self, *_args):
-        engine = self._selected_engine_key()
-        if hasattr(self, "onebot_engine_panel"):
-            self.onebot_engine_panel.setVisible(engine == ENGINE_ONEBOT_V11)
-
-    def _sync_http_push_debug_enabled(self, *_args):
-        if not hasattr(self, "http_push_enabled"):
-            return
-
-        enabled = self.http_push_enabled.isChecked()
-        for widget_name in (
-            "http_push_host",
-            "http_push_port",
-            "http_push_path",
-            "http_push_token",
-        ):
-            widget = getattr(self, widget_name, None)
-            if widget is not None:
-                widget.setEnabled(enabled)
 
     def _create_rule_tab(self):
         """规则设置标签页"""
@@ -1024,40 +903,11 @@ class SettingsWindow(FluentWindow):
         content = QWidget()
         form = QFormLayout(content)
 
-        self.http_push_enabled = CheckBox(self.tr("启用 HTTP Push 调试引擎"))
-        self.http_push_enabled.setChecked(
-            self.data.get("HTTPPush_Enabled", self.settings.http_push_enabled)
+        hint = QLabel(
+            self.tr("捕获方式：原生注入（SnowLuma 内核）。核心开关请在悬浮球或首页状态徽章上操作。")
         )
-        self.http_push_enabled.stateChanged.connect(self._sync_http_push_debug_enabled)
-
-        self.http_push_debug_hint = QLabel(
-            self.tr(
-                'HTTP Push 是调试页的辅助监听器，可与当前主引擎同时运行。测试 JSON：{"sender":"测试群","message":"测试消息"}'
-            )
-        )
-        self.http_push_debug_hint.setWordWrap(True)
-
-        self.http_push_host = self._line_edit(
-            self.data.get("HTTPPush_Host", self.settings.http_push_host)
-        )
-        self.http_push_port = SpinBox()
-        self.http_push_port.setRange(1, 65535)
-        self.http_push_port.setValue(self.data.get("HTTPPush_Port", self.settings.http_push_port))
-        self.http_push_path = self._line_edit(
-            self.data.get("HTTPPush_Path", self.settings.http_push_path)
-        )
-        self.http_push_token = self._line_edit(
-            self.data.get("HTTPPush_Token", self.settings.http_push_token)
-        )
-        self.http_push_token.setEchoMode(QLineEdit.EchoMode.Password)
-
-        form.addRow(self.tr("HTTP Push"), self.http_push_enabled)
-        form.addRow(self.http_push_debug_hint)
-        form.addRow(self.tr("监听地址"), self.http_push_host)
-        form.addRow(self.tr("监听端口"), self.http_push_port)
-        form.addRow(self.tr("请求路径"), self.http_push_path)
-        form.addRow(self.tr("Token"), self.http_push_token)
-        self._sync_http_push_debug_enabled()
+        hint.setWordWrap(True)
+        form.addRow(hint)
 
         return content
 
@@ -1331,12 +1181,6 @@ class SettingsWindow(FluentWindow):
 
     def save_settings(self):
         """保存设置"""
-        engine_index = self.notification_engine.currentIndex()
-        if 0 <= engine_index < len(self.notification_engine_choices):
-            notification_engine = self.notification_engine_choices[engine_index][0]
-        else:
-            notification_engine = "auto"
-
         auto_start_enabled = self.auto_start.isChecked() if is_auto_start_supported() else False
         if is_auto_start_supported() and not set_auto_start_enabled(auto_start_enabled):
             show_fluent_message(
@@ -1353,15 +1197,6 @@ class SettingsWindow(FluentWindow):
                 "Auto_Start": auto_start_enabled,
                 "Tencent_Files_Path": self.tencent_path.text(),
                 "User_QQ": self.user_qq.text(),
-                "NotificationEngine": notification_engine,
-                "UIAMode": notification_engine == "uia",
-                "OneBotV11_WS_URL": self.onebot_v11_ws_url.text(),
-                "OneBotV11_Access_Token": self.onebot_v11_token.text(),
-                "HTTPPush_Enabled": self.http_push_enabled.isChecked(),
-                "HTTPPush_Host": self.http_push_host.text(),
-                "HTTPPush_Port": self.http_push_port.value(),
-                "HTTPPush_Path": self.http_push_path.text(),
-                "HTTPPush_Token": self.http_push_token.text(),
                 "Important_Persons": self._get_list(self.list_persons),
                 "Important_Keywords": self._get_list(self.list_keywords),
                 "BlackList": self._get_list(self.list_black),

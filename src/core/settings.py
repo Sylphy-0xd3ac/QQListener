@@ -6,8 +6,6 @@ from typing import Any
 
 from loguru import logger
 
-from src.core.notification_engines import normalize_notification_engine
-
 
 class Settings:
     _instance: "Settings | None" = None
@@ -259,52 +257,6 @@ class Settings:
     @property
     def auto_start(self) -> bool:
         return bool(self.get("Auto_Start", False))
-
-    @property
-    def uia_mode(self) -> bool:
-        return bool(self.get("UIAMode", False))
-
-    @property
-    def notification_engine(self) -> str:
-        return normalize_notification_engine(
-            self.get("NotificationEngine", None),
-            legacy_uia=self.uia_mode,
-        )
-
-    @property
-    def onebot_v11_ws_url(self) -> str:
-        result = self.get("OneBotV11_WS_URL", "ws://127.0.0.1:8080/event")
-        return str(result).strip() if result else ""
-
-    @property
-    def onebot_v11_token(self) -> str:
-        result = self.get("OneBotV11_Access_Token", "")
-        return str(result) if result else ""
-
-    @property
-    def http_push_enabled(self) -> bool:
-        return bool(self.get("HTTPPush_Enabled", False))
-
-    @property
-    def http_push_host(self) -> str:
-        result = self.get("HTTPPush_Host", "127.0.0.1")
-        return str(result).strip() if result else "127.0.0.1"
-
-    @property
-    def http_push_port(self) -> int:
-        result = self.get("HTTPPush_Port", 8765)
-        return int(result) if isinstance(result, (int, float)) else 8765
-
-    @property
-    def http_push_path(self) -> str:
-        result = self.get("HTTPPush_Path", "/push")
-        path = str(result).strip() if result else "/push"
-        return path if path.startswith("/") else f"/{path}"
-
-    @property
-    def http_push_token(self) -> str:
-        result = self.get("HTTPPush_Token", "")
-        return str(result) if result else ""
 
     @property
     def qq_only(self) -> bool:
