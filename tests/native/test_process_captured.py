@@ -84,6 +84,15 @@ def test_image_path_sets_pic_path():
     assert data is not None and data["Pic_Path"] == "/tmp/a.jpg"
 
 
+def test_file_path_sets_file_and_icon():
+    mp = _make_processor(FakeSettings())
+    msg = _group_msg(segments=[Segment(type="file", name="期末.docx")])
+    data = mp.process_captured(msg, file_path="/tmp/qq/期末.docx")
+    assert data is not None
+    assert data["file"] == "/tmp/qq/期末.docx"
+    assert data["icon_file"] == "asset/FileIcon/word.png"  # 按文件名扩展匹配图标
+
+
 def test_at_me_raises_priority():
     mp = _make_processor(FakeSettings())
     msg = _group_msg(segments=[Segment(type="at", text="我", target_id="10001")])

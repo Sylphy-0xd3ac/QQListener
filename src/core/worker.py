@@ -87,14 +87,24 @@ class NotificationWorker(QThread):
 
     async def _handle_captured(self, msg: CapturedMessage):
         image_path = None
+        file_path = None
         image_seg = next((s for s in msg.segments if s.type == "image" and s.url), None)
-        if image_seg is not None and self.settings.auto_show_thumb:
+        # 群文件推送里不带 URL（需 OIDB 换地址）；仅当 segment 已带 url 时才下载。
+        file_seg = next((s for s in msg.segments if s.type == "file" and s.url), None)
+        if image_seg is not None or file_seg is not None:
             try:
                 async with aiohttp.ClientSession() as session:
-                    image_path = await download_url(session, image_seg.url, "image")
+                    if image_seg is not None and self.settings.auto_show_thumb:
+                        image_path = await download_url(session, image_seg.url, "image")
+                    if file_seg is not None:
+                        file_path = await download_url(
+                            session, file_seg.url, "file", filename=file_seg.name or None
+                        )
             except Exception:
-                logger.debug("图片下载失败", exc_info=True)
+                logger.debug("附件下载失败", exc_info=True)
 
-        data = self.processor.process_captured(msg, image_path=image_path)
+        data = self.processor.process_captured(
+            msg, image_path=image_path, file_path=file_path
+        )
         if data:
             self.notification_ready.emit(data)

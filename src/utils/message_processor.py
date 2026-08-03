@@ -3,6 +3,7 @@ import time
 
 from src.core.settings import get_settings
 from src.native.model import CapturedMessage, message_text
+from src.utils.media import file_icon_for_path
 
 
 class MessageProcessor:
@@ -27,9 +28,14 @@ class MessageProcessor:
                 return True
         return False
 
-    def process_captured(self, msg: CapturedMessage, image_path: str | None = None) -> dict | None:
+    def process_captured(
+        self,
+        msg: CapturedMessage,
+        image_path: str | None = None,
+        file_path: str | None = None,
+    ) -> dict | None:
         body = message_text(msg)
-        if not body and not image_path:
+        if not body and not image_path and not file_path:
             return None
 
         sender_label = self._captured_sender_label(msg)
@@ -92,5 +98,10 @@ class MessageProcessor:
         }
         if image_path:
             notify_data["Pic_Path"] = image_path
+        if file_path:
+            notify_data["file"] = file_path
+            file_seg = next((s for s in msg.segments if s.type == "file"), None)
+            icon_ref = file_seg.name if file_seg and file_seg.name else file_path
+            notify_data["icon_file"] = file_icon_for_path(icon_ref)
         return notify_data
 
