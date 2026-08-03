@@ -16,14 +16,29 @@ class Settings:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, settings_file: str = "setting.json") -> None:
+    def __init__(self, settings_file: str | None = None) -> None:
         if Settings._initialized:
             return
 
-        self._settings_file: str = settings_file
+        self._settings_file: str = self._resolve_settings_file(settings_file)
         self._data: dict[str, Any] = {}
         self._load()
         Settings._initialized = True
+
+    @staticmethod
+    def _resolve_settings_file(settings_file: str | None) -> str:
+        # 相对路径会随工作目录漂移：开机自启时 CWD 常是 system32，导致读不到/
+        # 写不进 setting.json，表现为每次都当首次运行。锚定到应用根目录。
+        if settings_file is None:
+            from src.core.resources import app_root
+
+            return str(app_root() / "setting.json")
+        candidate = Path(settings_file)
+        if candidate.is_absolute():
+            return str(candidate)
+        from src.core.resources import app_root
+
+        return str(app_root() / candidate)
 
     def _load(self) -> None:
         if not self._settings_file:
