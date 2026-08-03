@@ -1,6 +1,47 @@
 from src.core import core_updater as cu
 
 
+class _FakeSettings:
+    def __init__(self):
+        self._d = {}
+        self.saved = 0
+
+    def get(self, k, default=None):
+        return self._d.get(k, default)
+
+    def set(self, k, v):
+        self._d[k] = v
+
+    def save(self):
+        self.saved += 1
+        return True
+
+
+def test_eula_acceptance_roundtrip():
+    s = _FakeSettings()
+    assert cu.is_eula_accepted(s) is False
+    cu.mark_eula_accepted(s)
+    assert cu.is_eula_accepted(s) is True
+    assert s.saved == 1
+
+
+def test_needs_core_setup_gated_by_platform(monkeypatch):
+    s = _FakeSettings()
+    # 不支持的平台：从不需要向导
+    monkeypatch.setattr(cu, "core_supported", lambda: False)
+    assert cu.needs_core_setup(s) is False
+    # 支持的平台 + 未接受 EULA：需要
+    monkeypatch.setattr(cu, "core_supported", lambda: True)
+    monkeypatch.setattr(cu, "is_core_installed", lambda: True)
+    assert cu.needs_core_setup(s) is True
+    # 支持 + 已接受 + 已安装：不需要
+    cu.mark_eula_accepted(s)
+    assert cu.needs_core_setup(s) is False
+    # 支持 + 已接受但内核缺失：需要
+    monkeypatch.setattr(cu, "is_core_installed", lambda: False)
+    assert cu.needs_core_setup(s) is True
+
+
 def test_is_newer():
     assert cu.is_newer("v1.13.0", None) is True
     assert cu.is_newer("v1.13.0", "v1.12.9") is True

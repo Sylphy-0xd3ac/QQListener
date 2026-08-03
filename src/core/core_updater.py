@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import sys
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
@@ -21,6 +22,20 @@ from src.core.resources import app_root
 
 CORE_REPO = "SnowLuma/SnowLuma"
 DEFAULT_PLATFORM = "win-x64"
+
+RAW_BASE = f"https://raw.githubusercontent.com/{CORE_REPO}/main"
+# 运行时从官方仓库拉取，不随本程序打包 SnowLuma 的法律文本。
+LEGAL_DOCS = {
+    "eula": ("SnowLuma EULA（最终用户许可协议）", "EULA.md"),
+    "license": ("SnowLuma LICENSE（许可证）", "LICENSE"),
+    "privacy": ("SnowLuma 隐私说明", "PRIVACY.md"),
+}
+EULA_ACCEPTED_KEY = "SnowLuma_EULA_Accepted"
+
+
+def core_supported() -> bool:
+    """当前平台是否有 SnowLuma 官方内核（目前仅 Windows x64）。"""
+    return sys.platform == "win32"
 
 # 需要安装的内核二进制（钩子 + 注入器）。ffmpeg/websocket 附加组件按需扩展。
 CORE_BINARY_NAMES = (
@@ -72,6 +87,29 @@ def installed_binaries() -> list[str]:
 
 def is_core_installed() -> bool:
     return bool(installed_binaries())
+
+
+def is_eula_accepted(settings) -> bool:
+    return bool(settings.get(EULA_ACCEPTED_KEY, False))
+
+
+def mark_eula_accepted(settings) -> None:
+    settings.set(EULA_ACCEPTED_KEY, True)
+    settings.save()
+
+
+def needs_core_setup(settings) -> bool:
+    """受支持平台上，EULA 未接受或内核未安装时需要走安装向导。"""
+    if not core_supported():
+        return False
+    return not is_eula_accepted(settings) or not is_core_installed()
+
+
+def fetch_legal_text(kind: str, proxy: str | None = None, timeout: int = 15) -> str:
+    _, path = LEGAL_DOCS[kind]
+    url = apply_proxy(f"{RAW_BASE}/{path}", proxy)
+    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (官方域名)
+        return resp.read().decode("utf-8", "replace")
 
 
 def _parse_version(value: str) -> tuple[int, ...]:
