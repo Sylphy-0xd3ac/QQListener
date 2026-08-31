@@ -11,6 +11,7 @@ from src.core.signals import get_signals
 from src.native.capture import RecvCapture, enumerate_qq_pids
 from src.native.file_resolver import resolve_file_url
 from src.native.model import CapturedMessage
+from src.native.profile_resolver import UserProfileNames, resolve_user_profile
 from src.ui.qt_compat import QThread, Signal
 from src.utils.media import download_url
 from src.utils.message_processor import MessageProcessor
@@ -30,6 +31,8 @@ class NotificationWorker(QThread):
         self.settings = get_settings()
         self.signals = get_signals()
         self.processor = MessageProcessor()
+        self._profile_cache: dict[tuple[int, str], UserProfileNames] = {}
+        self._profile_tasks: dict[tuple[int, str], asyncio.Task[UserProfileNames]] = {}
         self._running = True
 
     def run(self):
@@ -111,6 +114,7 @@ class NotificationWorker(QThread):
         asyncio.create_task(self._handle_captured(msg))
 
     async def _handle_captured(self, msg: CapturedMessage):
+        await self._enrich_sender_profile(msg)
         image_path = None
         image_seg = next((s for s in msg.segments if s.type == "image" and s.url), None)
         file_seg = next((s for s in msg.segments if s.type == "file"), None)
@@ -131,3 +135,28 @@ class NotificationWorker(QThread):
         data = self.processor.process_captured(msg, image_path=image_path)
         if data:
             self.notification_ready.emit(data)
+
+    async def _enrich_sender_profile(self, msg: CapturedMessage) -> None:
+        user_id = str(msg.sender_id or "").strip()
+        if not user_id or not msg.source_pid:
+            return
+
+        key = (msg.source_pid, user_id)
+        if key not in self._profile_cache:
+            try:
+                task = self._profile_tasks.get(key)
+                if task is None:
+                    task = asyncio.create_task(resolve_user_profile(msg))
+                    self._profile_tasks[key] = task
+                self._profile_cache[key] = await task
+            except Exception:
+                logger.debug("发送者资料解析失败", exc_info=True)
+                self._profile_cache[key] = UserProfileNames()
+            finally:
+                self._profile_tasks.pop(key, None)
+
+        profile = self._profile_cache[key]
+        if profile.nickname:
+            msg.sender_nickname = profile.nickname
+        if profile.remark:
+            msg.sender_remark = profile.remark

@@ -38,11 +38,23 @@ class MessageProcessor:
         return msg.peer_id in person_ids
 
     def _captured_sender_label(self, msg: CapturedMessage) -> str:
-        sender = msg.sender_name or msg.sender_id
+        if msg.scene == "group":
+            sender = (
+                msg.sender_remark
+                or msg.sender_group_card
+                or msg.sender_nickname
+                or msg.sender_name
+                or msg.sender_id
+            )
+        else:
+            sender = msg.sender_remark or msg.sender_nickname or msg.sender_name or msg.sender_id
+
+        qq_suffix = f" {msg.sender_id}" if msg.sender_id and sender != msg.sender_id else ""
         if msg.scene == "group":
             peer = msg.peer_name or msg.peer_id
-            return f"{peer}·{sender}" if peer else sender
-        return sender
+            group_suffix = f"（{peer}）" if peer else ""
+            return f"{sender}{group_suffix}{qq_suffix}"
+        return f"{sender}{qq_suffix}"
 
     def _captured_mentions_me(self, msg: CapturedMessage) -> bool:
         user_qq = str(self.settings.get("User_QQ", "") or "").strip()

@@ -23,6 +23,9 @@ class CapturedMessage:
     raw_seq: int
     account_uid: str = ""
     source_pid: int = 0
+    sender_nickname: str = ""
+    sender_remark: str = ""
+    sender_group_card: str = ""
 
 
 def message_text(msg: "CapturedMessage") -> str:
