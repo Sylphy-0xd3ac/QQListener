@@ -2798,6 +2798,7 @@ dependencies = [
     { name = "pyside6" },
     { name = "pyside6-fluent-widgets" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "truststore", marker = "sys_platform == 'win32'" },
     { name = "uiautomation", marker = "sys_platform == 'win32'" },
     { name = "winsdk", marker = "sys_platform == 'win32'" },
 ]
@@ -2842,6 +2843,7 @@ requires-dist = [
     { name = "pyttsx3", marker = "extra == 'system-tts'", specifier = ">=2.99" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311" },
     { name = "pywin32", marker = "sys_platform == 'win32' and extra == 'win32'", specifier = ">=311" },
+    { name = "truststore", marker = "sys_platform == 'win32'", specifier = ">=0.10.4" },
     { name = "uiautomation", marker = "sys_platform == 'win32'", specifier = ">=2.0.29" },
     { name = "uiautomation", marker = "sys_platform == 'win32' and extra == 'uia'", specifier = ">=2.0.29" },
     { name = "uiautomation", marker = "sys_platform == 'win32' and extra == 'windows'", specifier = ">=2.0.29" },
@@ -2910,6 +2912,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/22/de/48c59722572767841493b26183a0d1cc411d54fd759c5607c4590b6563a6/tomli-2.4.1.tar.gz", hash = "sha256:7c7e1a961a0b2f2472c1ac5b69affa0ae1132c39adcb67aba98568702b9cc23f", size = 17543, upload-time = "2026-03-25T20:22:03.828Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7b/61/cceae43728b7de99d9b847560c262873a1f6c98202171fd5ed62640b494b/tomli-2.4.1-py3-none-any.whl", hash = "sha256:0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe", size = 14583, upload-time = "2026-03-25T20:22:03.012Z" },
+]
+
+[[package]]
+name = "truststore"
+version = "0.10.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.46Z" },
 ]
 
 [[package]]

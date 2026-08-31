@@ -10,15 +10,23 @@ from __future__ import annotations
 import io
 import json
 import os
+import ssl
 import sys
+import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 from loguru import logger
 
 from src.core.resources import app_root
+
+try:
+    import truststore
+except ImportError:  # 非 Windows 不安装此平台依赖；仍保留标准库安全回退。
+    truststore = None
 
 CORE_REPO = "SnowLuma/SnowLuma"
 DEFAULT_PLATFORM = "win-x64"
@@ -103,10 +111,34 @@ def needs_core_setup(settings) -> bool:
     return not is_eula_accepted(settings) or not is_core_installed()
 
 
+@lru_cache(maxsize=1)
+def _https_context() -> ssl.SSLContext:
+    """严格校验证书；Windows 使用系统原生证书链与 CryptoAPI。"""
+    if sys.platform == "win32" and truststore is not None:
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    return ssl.create_default_context()
+
+
+def _urlopen(target, *, timeout: int):
+    try:
+        return urllib.request.urlopen(  # noqa: S310 — 调用点只允许官方/用户明确代理 URL
+            target,
+            timeout=timeout,
+            context=_https_context(),
+        )
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, ssl.SSLCertVerificationError):
+            raise RuntimeError(
+                "HTTPS 证书校验失败。请清空不可信下载代理；若处于校园/公司网络，"
+                "请安装其根证书或切换可信网络。程序不会跳过证书校验。"
+            ) from exc
+        raise
+
+
 def fetch_legal_text(kind: str, proxy: str | None = None, timeout: int = 15) -> str:
     _, path = LEGAL_DOCS[kind]
     url = apply_proxy(f"{RAW_BASE}/{path}", proxy)
-    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (官方域名)
+    with _urlopen(url, timeout=timeout) as resp:
         return resp.read().decode("utf-8", "replace")
 
 
@@ -149,7 +181,7 @@ def select_asset(assets: list[dict], platform: str = DEFAULT_PLATFORM) -> dict |
 def latest_release(platform: str = DEFAULT_PLATFORM, timeout: int = 15) -> ReleaseInfo:
     api = f"https://api.github.com/repos/{CORE_REPO}/releases/latest"
     req = urllib.request.Request(api, headers={"Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (官方域名)
+    with _urlopen(req, timeout=timeout) as resp:
         data = json.load(resp)
     asset = select_asset(data.get("assets", []), platform)
     if asset is None:
@@ -199,7 +231,7 @@ def download_and_install(
     release = latest_release(platform)
     download_url = apply_proxy(release.asset_url, proxy)
     logger.info("下载内核: {}", download_url)
-    with urllib.request.urlopen(download_url, timeout=timeout) as resp:  # noqa: S310
+    with _urlopen(download_url, timeout=timeout) as resp:
         zip_bytes = resp.read()
 
     installed = _extract_core_binaries(zip_bytes, native_dir())

@@ -67,8 +67,10 @@ jobs:
             "aiohttp>=3.13.3" \
             "edge-tts>=7.2.7" \
             "loguru>=0.7.2" \
+            "pefile>=2024.8.26; sys_platform == 'win32'" \
             "psutil>=7.2.2" \
             "pygame>=2.6.1" \
+            "truststore>=0.10.4; sys_platform == 'win32'" \
             "PySide2>=5.15.2.1,<5.16" \
             "PySide2-Fluent-Widgets>=1.8.7" \
             "pycaw>=20240210; sys_platform == 'win32'" \
@@ -104,6 +106,10 @@ jobs:
 
       - name: Compile check
         run: uv run --no-sync python -m compileall -q src main.py scripts
+
+      - name: Run native tests
+        if: runner.os == 'Windows' && matrix.qt_api == 'pyside6'
+        run: uv run --no-sync pytest tests/native -q
 
       - name: Qt import check
         shell: bash
