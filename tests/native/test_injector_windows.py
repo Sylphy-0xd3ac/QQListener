@@ -161,7 +161,10 @@ def test_generated_probe_is_pe32_plus_dll():
     assert struct.unpack_from("<I", image, optional + 16)[0] == _ENTRY_RVA
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="仅在 Windows x64 运行")
+@pytest.mark.skipif(
+    sys.platform != "win32" or struct.calcsize("P") != 8,
+    reason="仅在 Windows x64 运行",
+)
 def test_manual_map_roundtrip_against_puppet_process(tmp_path):
     dll = _build_probe_dll(tmp_path)
     host = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
