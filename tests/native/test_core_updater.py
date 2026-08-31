@@ -95,8 +95,8 @@ def test_apply_proxy():
     url = "https://github.com/SnowLuma/SnowLuma/releases/download/v1/x.zip"
     assert cu.apply_proxy(url, None) == url
     assert cu.apply_proxy(url, "") == url
-    assert cu.apply_proxy(url, "https://ghproxy.com") == f"https://ghproxy.com/{url}"
-    assert cu.apply_proxy(url, "https://ghproxy.com/") == f"https://ghproxy.com/{url}"
+    assert cu.apply_proxy(url, "https://ghfast.top") == f"https://ghfast.top/{url}"
+    assert cu.apply_proxy(url, "https://ghfast.top/") == f"https://ghfast.top/{url}"
 
 
 def test_select_asset_prefers_full_win_x64():

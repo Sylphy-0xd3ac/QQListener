@@ -533,7 +533,7 @@ class SettingsWindow(FluentWindow):
             self.data.get("Core_Download_Proxy", "")
         )
         self.core_proxy_edit.setPlaceholderText(
-            self.tr("留空走 GitHub 官方；国内可填第三方代理，如 https://ghproxy.com")
+            self.tr("留空走 GitHub 官方；国内可填第三方代理，如 https://ghfast.top")
         )
 
         self.core_check_btn = PrimaryPushButton(self.tr("检查更新"))
