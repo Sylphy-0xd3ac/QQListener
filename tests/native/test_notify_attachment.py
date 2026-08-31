@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from src.ui.notify_window import attachment_qurl
 
 
@@ -11,7 +13,7 @@ def test_attachment_qurl_accepts_existing_local_file(tmp_path):
     path.write_bytes(b"pdf")
     url = attachment_qurl(str(path))
     assert url is not None and url.isLocalFile()
-    assert url.toLocalFile() == str(path)
+    assert Path(url.toLocalFile()).resolve() == path.resolve()
 
 
 def test_attachment_qurl_rejects_unknown_scheme_and_missing_path():
