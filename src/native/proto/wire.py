@@ -63,3 +63,24 @@ def as_str(v: WireValue) -> str:
 
 def as_bytes(v: WireValue) -> bytes:
     return v.raw
+
+
+def encode_varint(value: int) -> bytes:
+    if value < 0:
+        raise ValueError("varint cannot encode a negative value")
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        out.append(byte | (0x80 if value else 0))
+        if not value:
+            return bytes(out)
+
+
+def encode_varint_field(field_no: int, value: int) -> bytes:
+    return encode_varint((field_no << 3) | WIRE_VARINT) + encode_varint(value)
+
+
+def encode_bytes_field(field_no: int, value: bytes | str) -> bytes:
+    payload = value.encode("utf-8") if isinstance(value, str) else bytes(value)
+    return encode_varint((field_no << 3) | WIRE_LEN) + encode_varint(len(payload)) + payload

@@ -120,9 +120,6 @@ def build_command(name: str, qt_api: str) -> list[str]:
                 "comtypes",
                 "pefile",
                 "pycaw.pycaw",
-                "uiautomation",
-                "winsdk.windows.ui.notifications",
-                "winsdk.windows.ui.notifications.management",
             ],
         )
         command.extend(["--collect-submodules", "comtypes", "--collect-submodules", "pycaw"])

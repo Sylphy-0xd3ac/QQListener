@@ -78,21 +78,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="maingui2.py" line="164"/>
-        <source>启用 UIA 模式</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="maingui2.py" line="173"/>
-        <source>UI Automation（UIA）模式识别准确率较低，性能较差，非必要勿勾选</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="maingui2.py" line="176"/>
-        <source>我的聊天信息保存在哪里？</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="maingui2.py" line="180"/>
         <location filename="maingui2.py" line="630"/>
         <source>提示</source>
@@ -324,11 +309,6 @@
     <message>
         <location filename="maingui2.py" line="513"/>
         <source>最好的QQ通知监控软件 - 班级群监控神器</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="maingui2.py" line="516"/>
-        <source>警告：本程序仅支持 NT QQ，旧版 QQ 无法弹出 Windows Toast</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

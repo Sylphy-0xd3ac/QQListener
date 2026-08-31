@@ -1,4 +1,4 @@
-"""SnowLuma 内核（专有二进制）的获取/更新。
+"""SnowLuma 核心（专有二进制）的获取/更新。
 
 合规（见 spec「LICENSE 合规边界」）：只从 SnowLuma **官方 release** 下载，
 代理由用户配置、不内置不自建镜像，不随仓库分发二进制。二进制装到
@@ -42,7 +42,7 @@ EULA_ACCEPTED_KEY = "SnowLuma_EULA_Accepted"
 
 
 def core_supported() -> bool:
-    """当前平台是否有 SnowLuma 官方内核（目前仅 Windows x64）。"""
+    """当前平台是否有 SnowLuma 官方核心（目前仅 Windows x64）。"""
     return sys.platform == "win32"
 
 
@@ -105,7 +105,7 @@ def mark_eula_accepted(settings) -> None:
 
 
 def needs_core_setup(settings) -> bool:
-    """受支持平台上，EULA 未接受或内核未安装时需要走安装向导。"""
+    """受支持平台上，EULA 未接受或核心未安装时需要走安装向导。"""
     if not core_supported():
         return False
     return not is_eula_accepted(settings) or not is_core_installed()
@@ -202,7 +202,7 @@ def check_update(platform: str = DEFAULT_PLATFORM) -> UpdateStatus:
     try:
         release = latest_release(platform)
     except Exception as exc:  # 网络/解析失败：给出可读错误，不静默
-        logger.debug("检查内核更新失败", exc_info=True)
+        logger.debug("检查核心更新失败", exc_info=True)
         status.error = str(exc)
         return status
     status.latest_version = release.tag
@@ -227,16 +227,16 @@ def _extract_core_binaries(zip_bytes: bytes, dest: Path) -> list[str]:
 def download_and_install(
     proxy: str | None = None, platform: str = DEFAULT_PLATFORM, timeout: int = 120
 ) -> str:
-    """从官方 release 下载并安装内核二进制到 native/，返回安装的版本号。"""
+    """从官方 release 下载并安装核心二进制到 native/，返回安装的版本号。"""
     release = latest_release(platform)
     download_url = apply_proxy(release.asset_url, proxy)
-    logger.info("下载内核: {}", download_url)
+    logger.info("下载核心: {}", download_url)
     with _urlopen(download_url, timeout=timeout) as resp:
         zip_bytes = resp.read()
 
     installed = _extract_core_binaries(zip_bytes, native_dir())
     if not installed:
-        raise RuntimeError("压缩包内未找到内核二进制")
+        raise RuntimeError("压缩包内未找到核心二进制")
     version_file().write_text(release.tag, encoding="utf-8")
-    logger.info("内核安装完成: {} ({})", release.tag, ", ".join(installed))
+    logger.info("核心安装完成: {} ({})", release.tag, ", ".join(installed))
     return release.tag

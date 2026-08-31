@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 import os
 import subprocess
 import sys
@@ -96,6 +98,7 @@ from src.core.core_controller import (
     toggle_core,
     unload_core,
 )
+from src.core.core_runtime import CoreRuntimeState, get_core_runtime
 from src.core.core_updater import (
     check_update,
     current_core_version,
@@ -106,23 +109,27 @@ from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.ui.fluent_compat import (
     CaptionLabel,
+    CardWidget,
     CheckBox,
     ComboBox,
-    DoubleSpinBox,
     EditableComboBox,
     FluentWindow,
     IconInfoBadge,
+    IconWidget,
     LineEdit,
     ListWidget,
     NavigationItemPosition,
-    Pivot,
     PrimaryPushButton,
     PushButton,
     ScrollArea,
+    SegmentedWidget,
+    SimpleCardWidget,
     Slider,
     SpinBox,
+    StrongBodyLabel,
     SubtitleLabel,
     SwitchButton,
+    TitleLabel,
 )
 from src.ui.fluent_compat import (
     FluentIcon as FIF,
@@ -132,7 +139,7 @@ from src.utils.tts import set_system_volume_max
 
 
 class _CoreUpdateThread(QThread):
-    """后台执行内核检查/安装，避免阻塞 UI。"""
+    """后台执行核心检查/安装，避免阻塞 UI。"""
 
     checked = Signal(object)  # UpdateStatus
     installed = Signal(str)  # 已装版本
@@ -174,9 +181,7 @@ class SettingsWindow(FluentWindow):
         self.init_ui()
         self._core_state_listener = self._on_core_state_changed
         add_core_state_listener(self._core_state_listener)
-        self.destroyed.connect(
-            lambda *_args: remove_core_state_listener(self._core_state_listener)
-        )
+        self.destroyed.connect(lambda *_args: remove_core_state_listener(self._core_state_listener))
         self._badge_long_press_timer = QTimer(self)
         self._badge_long_press_timer.setSingleShot(True)
         self._badge_long_press_timer.timeout.connect(self._on_badge_long_press)
@@ -272,42 +277,115 @@ class SettingsWindow(FluentWindow):
         edit.setText(str(text) if text is not None else "")
         return edit
 
+    def _section_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet(
+            "color: #202020; font-size: 14px; font-weight: 600; background: transparent;"
+        )
+        return label
+
     def _create_home_interface(self) -> QWidget:
         page = QWidget()
         page.setObjectName("homeInterface")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(44, 40, 44, 36)
-        layout.setSpacing(24)
-        layout.addStretch()
+        layout.setContentsMargins(42, 34, 42, 34)
+        layout.setSpacing(18)
 
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
 
-        status_row = QHBoxLayout()
-        status_row.setSpacing(14)
-        status_row.addStretch()
+        header = QHBoxLayout()
+        header_text = QVBoxLayout()
+        header_text.setSpacing(2)
+        header_text.addWidget(TitleLabel(self.tr("QQ Listener")))
+        header_text.addWidget(CaptionLabel(self.tr("原生 QQ 消息监听与重要通知")))
+        header.addLayout(header_text)
+        header.addStretch()
+        layout.addLayout(header)
+
+        hero = CardWidget(page)
+        hero.setMinimumHeight(154)
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(24, 22, 24, 22)
+        hero_layout.setSpacing(18)
 
         self.home_status_badge = None
         self.home_status_badge_state = None
-        self.home_status_badge_box = QWidget(page)
-        self.home_status_badge_box.setFixedSize(44, 44)
+        self.home_status_badge_box = QWidget(hero)
+        self.home_status_badge_box.setFixedSize(52, 52)
         self.home_status_badge_box.setCursor(Qt.CursorShape.PointingHandCursor)
         self.home_status_badge_box.mousePressEvent = self._on_badge_pressed
         self.home_status_badge_box.mouseReleaseEvent = self._on_badge_released
-        status_row.addWidget(self.home_status_badge_box, alignment=Qt.AlignVCenter)
+        hero_layout.addWidget(self.home_status_badge_box, alignment=Qt.AlignVCenter)
 
         status_text_layout = QVBoxLayout()
         status_text_layout.setSpacing(4)
         self.home_status_title = SubtitleLabel(self.tr("正在运行"))
-        self.home_status_detail = CaptionLabel(self.tr("QQ号: {qq}").format(qq=user_qq))
+        self.home_status_detail = CaptionLabel(self.tr("QQ {qq}").format(qq=user_qq))
         self.home_status_detail.setStyleSheet("color: #707070;")
+        self.home_status_detail.setWordWrap(True)
         status_text_layout.addWidget(self.home_status_title)
         status_text_layout.addWidget(self.home_status_detail)
-        status_row.addLayout(status_text_layout)
-        status_row.addStretch()
-        layout.addLayout(status_row)
+        hero_layout.addLayout(status_text_layout, 1)
+
+        hero_actions = QVBoxLayout()
+        hero_actions.setSpacing(8)
+        open_settings = PrimaryPushButton(self.tr("打开设置"))
+        open_settings.setIcon(FIF.SETTING)
+        open_settings.clicked.connect(lambda *_: self._show_settings_interface())
+        test_notification = PushButton(self.tr("测试通知"))
+        test_notification.setIcon(FIF.MESSAGE)
+        test_notification.clicked.connect(self._test_notify)
+        hero_actions.addWidget(open_settings)
+        hero_actions.addWidget(test_notification)
+        hero_layout.addLayout(hero_actions)
+        layout.addWidget(hero)
+
+        stats = QHBoxLayout()
+        stats.setSpacing(14)
+        version_card, self.home_version_value = self._dashboard_stat_card(
+            FIF.INFO, self.tr("核心版本"), self._core_version_text()
+        )
+        people_card, self.home_important_value = self._dashboard_stat_card(
+            FIF.PEOPLE,
+            self.tr("重要人物 QQ"),
+            str(len(self.data.get("Important_Person_QQs", self.settings.important_person_qqs))),
+        )
+        rules_card, self.home_rules_value = self._dashboard_stat_card(
+            FIF.CHECKBOX, self.tr("名单规则"), self._home_rules_text()
+        )
+        stats.addWidget(version_card, 1)
+        stats.addWidget(people_card, 1)
+        stats.addWidget(rules_card, 1)
+        layout.addLayout(stats)
         layout.addStretch()
         self._refresh_notification_status()
         return page
+
+    def _dashboard_stat_card(self, icon, title: str, value: str):
+        card = SimpleCardWidget()
+        card.setMinimumHeight(112)
+        card_layout = QHBoxLayout(card)
+        card_layout.setContentsMargins(18, 16, 18, 16)
+        card_layout.setSpacing(12)
+        icon_widget = IconWidget(card)
+        icon_widget.setIcon(icon)
+        icon_widget.setFixedSize(30, 30)
+        card_layout.addWidget(icon_widget)
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(3)
+        text_layout.addWidget(CaptionLabel(title))
+        value_label = StrongBodyLabel(value)
+        text_layout.addWidget(value_label)
+        card_layout.addLayout(text_layout, 1)
+        return card, value_label
+
+    def _home_rules_text(self) -> str:
+        names = []
+        if self.data.get("Whitelist_Enabled", self.settings.whitelist_enabled):
+            names.append(self.tr("白名单"))
+        if self.data.get("Blacklist_Enabled", self.settings.blacklist_enabled):
+            names.append(self.tr("黑名单"))
+        return " + ".join(names) if names else self.tr("未启用")
 
     def _show_settings_interface(self):
         self.switchTo(self.settings_interface)
@@ -323,9 +401,12 @@ class SettingsWindow(FluentWindow):
         layout.setContentsMargins(32, 28, 32, 24)
         layout.setSpacing(16)
 
-        layout.addWidget(SubtitleLabel(self.tr("设置")))
+        layout.addWidget(TitleLabel(self.tr("设置")))
+        settings_hint = CaptionLabel(self.tr("监听、规则、通知与核心管理"))
+        settings_hint.setStyleSheet("color: #707070;")
+        layout.addWidget(settings_hint)
 
-        self.settings_pivot = Pivot(page)
+        self.settings_pivot = SegmentedWidget(page)
         self.settings_pivot.currentItemChanged.connect(self._on_settings_pivot_changed)
         layout.addWidget(self.settings_pivot)
 
@@ -364,6 +445,8 @@ class SettingsWindow(FluentWindow):
         action_layout.addStretch()
         btn_test = PushButton(self.tr("测试弹窗"))
         btn_save = PrimaryPushButton(self.tr("保存设置"))
+        btn_test.setIcon(FIF.MESSAGE)
+        btn_save.setIcon(FIF.SAVE)
         btn_test.setFixedHeight(38)
         btn_save.setFixedHeight(38)
         btn_test.clicked.connect(self._test_notify)
@@ -382,12 +465,24 @@ class SettingsWindow(FluentWindow):
         visible: bool = True,
     ):
         content.setObjectName(f"{route_key}Content")
+        page_content = content
+        if route_key != "core":
+            surface = SimpleCardWidget()
+            surface_layout = QVBoxLayout(surface)
+            surface_layout.setContentsMargins(20, 18, 20, 18)
+            surface_layout.addWidget(content)
+            host = QWidget()
+            host_layout = QVBoxLayout(host)
+            host_layout.setContentsMargins(4, 4, 8, 12)
+            host_layout.addWidget(surface)
+            host_layout.addStretch()
+            page_content = host
         scroll_area = ScrollArea()
         scroll_area.setObjectName(f"{route_key}ScrollArea")
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.setWidget(content)
+        scroll_area.setWidget(page_content)
         scroll_area.setStyleSheet("""
             ScrollArea {
                 background: transparent;
@@ -437,7 +532,13 @@ class SettingsWindow(FluentWindow):
             return
 
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
-        self.home_status_detail.setText(self.tr("QQ号: {qq}").format(qq=user_qq))
+        self.home_status_detail.setText(self.tr("QQ {qq}").format(qq=user_qq))
+        if hasattr(self, "home_version_value"):
+            self.home_version_value.setText(self._core_version_text())
+            self.home_important_value.setText(
+                str(len(self.data.get("Important_Person_QQs", self.settings.important_person_qqs)))
+            )
+            self.home_rules_value.setText(self._home_rules_text())
         self._refresh_notification_status()
 
     _CORE_STATE_TITLE = {
@@ -451,25 +552,41 @@ class SettingsWindow(FluentWindow):
             return
 
         state = get_core_state() if state is None else state
-        self.home_status_title.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
+        if state == CoreState.RUNNING:
+            title, detail, _color = self._runtime_display()
+            self.home_status_title.setText(title)
+            user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
+            self.home_status_detail.setText(
+                self.tr("QQ {qq} · {detail}").format(qq=user_qq, detail=detail)
+            )
+        else:
+            self.home_status_title.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
         self._refresh_home_status_badge(state)
 
     def _refresh_home_status_badge(self, state: CoreState):
         if not hasattr(self, "home_status_badge_box"):
             return
 
-        if self.home_status_badge is not None and self.home_status_badge_state == state:
+        runtime_state = get_core_runtime().state if state == CoreState.RUNNING else None
+        badge_state = (state, runtime_state)
+        if self.home_status_badge is not None and self.home_status_badge_state == badge_state:
             return
 
         if self.home_status_badge is not None:
             self.home_status_badge.setParent(None)
             self.home_status_badge.deleteLater()
 
-        if state == CoreState.RUNNING:
+        if state == CoreState.RUNNING and runtime_state == CoreRuntimeState.CONNECTED:
             self.home_status_badge = IconInfoBadge.success(
                 FIF.ACCEPT_MEDIUM, self.home_status_badge_box
             )
-            tooltip = self.tr("核心运行中（单击暂停，长按卸载）")
+            tooltip = self.tr("接收管道已连接（单击暂停，长按卸载）")
+        elif state == CoreState.RUNNING and runtime_state == CoreRuntimeState.ERROR:
+            self.home_status_badge = IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
+            tooltip = self.tr("核心运行异常（单击暂停，长按卸载）")
+        elif state == CoreState.RUNNING:
+            self.home_status_badge = IconInfoBadge.warning(FIF.SYNC, self.home_status_badge_box)
+            tooltip = self.tr("正在等待 QQ 或接收管道（单击暂停，长按卸载）")
         elif state == CoreState.PAUSED:
             self.home_status_badge = IconInfoBadge.warning(FIF.PAUSE, self.home_status_badge_box)
             tooltip = self.tr("核心已暂停（单击恢复，长按卸载）")
@@ -477,7 +594,7 @@ class SettingsWindow(FluentWindow):
             self.home_status_badge = IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
             tooltip = self.tr("核心未启动（单击启动）")
 
-        self.home_status_badge_state = state
+        self.home_status_badge_state = badge_state
         self.home_status_badge.setFixedSize(36, 36)
         self.home_status_badge.setIconSize(QSize(18, 18))
         self.home_status_badge.move(4, 4)
@@ -518,46 +635,204 @@ class SettingsWindow(FluentWindow):
         self._refresh_notification_status(state)
         if hasattr(self, "core_status_value"):
             self.core_status_value.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
+        self._refresh_core_actions()
+        self._refresh_core_runtime_status()
 
     def _create_core_tab(self):
-        """核心（SnowLuma 内核）管理页：状态、版本、检查更新。"""
+        """核心管理页：明确区分映像映射与接收管道真正连通。"""
         widget = QWidget()
-        form = QFormLayout(widget)
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 16)
+        layout.setSpacing(16)
+
+        layout.addWidget(SubtitleLabel(self.tr("SnowLuma 核心")))
+        subtitle = CaptionLabel(
+            self.tr("只有“接收管道已连接”才表示监听可用；核心映像映射完成不等于能收到消息。")
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("color: #666666;")
+        layout.addWidget(subtitle)
+
+        status_card = QFrame()
+        status_card.setObjectName("CoreStatusCard")
+        status_card.setStyleSheet("""
+            QFrame#CoreStatusCard {
+                background: rgba(255, 255, 255, 220);
+                border: 1px solid #dfe5ec;
+                border-radius: 12px;
+            }
+            QFrame#CoreStatusCard QLabel {
+                color: #202020;
+                background: transparent;
+            }
+        """)
+        status_layout = QVBoxLayout(status_card)
+        status_layout.setContentsMargins(20, 18, 20, 18)
+        status_layout.setSpacing(9)
+
+        status_header = QHBoxLayout()
+        self.core_runtime_dot = QLabel("●")
+        self.core_runtime_title = SubtitleLabel(self.tr("正在检查运行状态"))
+        status_header.addWidget(self.core_runtime_dot)
+        status_header.addWidget(self.core_runtime_title)
+        status_header.addStretch()
+        status_layout.addLayout(status_header)
+
+        self.core_runtime_detail = CaptionLabel("")
+        self.core_runtime_detail.setWordWrap(True)
+        self.core_runtime_detail.setStyleSheet("color: #666666;")
+        status_layout.addWidget(self.core_runtime_detail)
+
+        metadata = QHBoxLayout()
+        metadata.addWidget(QLabel(self.tr("控制状态")))
 
         self.core_status_value = CaptionLabel(
             self.tr(self._CORE_STATE_TITLE.get(get_core_state(), "正在运行"))
         )
+        metadata.addWidget(self.core_status_value)
+        metadata.addSpacing(28)
+        metadata.addWidget(QLabel(self.tr("已安装版本")))
         self.core_version_value = CaptionLabel(self._core_version_text())
+        metadata.addWidget(self.core_version_value)
+        metadata.addStretch()
+        status_layout.addLayout(metadata)
 
+        actions = QHBoxLayout()
+        self.core_toggle_btn = PrimaryPushButton()
+        self.core_toggle_btn.clicked.connect(lambda *_: toggle_core())
+        self.core_unload_btn = PushButton(self.tr("卸载核心"))
+        self.core_unload_btn.setIcon(FIF.DELETE)
+        self.core_unload_btn.clicked.connect(self._request_core_unload)
+        actions.addWidget(self.core_toggle_btn)
+        actions.addWidget(self.core_unload_btn)
+        actions.addStretch()
+        status_layout.addLayout(actions)
+        layout.addWidget(status_card)
+
+        update_card = QFrame()
+        update_card.setObjectName("CoreUpdateCard")
+        update_card.setStyleSheet("""
+            QFrame#CoreUpdateCard {
+                background: rgba(255, 255, 255, 220);
+                border: 1px solid #dfe5ec;
+                border-radius: 12px;
+            }
+            QFrame#CoreUpdateCard QLabel {
+                color: #202020;
+                background: transparent;
+            }
+        """)
+        update_layout = QVBoxLayout(update_card)
+        update_layout.setContentsMargins(20, 18, 20, 18)
+        update_layout.setSpacing(10)
+        update_layout.addWidget(SubtitleLabel(self.tr("核心更新")))
+        update_hint = CaptionLabel(
+            self.tr("从 SnowLuma 官方 release 获取专有核心，本程序不随包分发该组件。")
+        )
+        update_hint.setWordWrap(True)
+        update_hint.setStyleSheet("color: #666666;")
+        update_layout.addWidget(update_hint)
+
+        proxy_row = QHBoxLayout()
+        proxy_row.addWidget(QLabel(self.tr("下载代理")))
         self.core_proxy_edit = self._line_edit(
-            self.data.get("Core_Download_Proxy", "")
+            self.data.get("Core_Download_Proxy", "https://ghfast.top")
         )
         self.core_proxy_edit.setPlaceholderText(
-            self.tr("留空走 GitHub 官方；国内可填第三方代理，如 https://ghfast.top")
+            self.tr("推荐 https://ghfast.top；留空则直连 GitHub 官方")
         )
+        proxy_row.addWidget(self.core_proxy_edit, 1)
+        update_layout.addLayout(proxy_row)
 
         self.core_check_btn = PrimaryPushButton(self.tr("检查更新"))
+        self.core_check_btn.setIcon(FIF.SYNC)
         self.core_check_btn.clicked.connect(self._on_check_core_update)
+        update_layout.addWidget(self.core_check_btn, alignment=Qt.AlignLeft)
 
         self.core_update_result = CaptionLabel("")
         self.core_update_result.setWordWrap(True)
         self.core_update_result.setStyleSheet("color: #707070;")
+        update_layout.addWidget(self.core_update_result)
+        layout.addWidget(update_card)
+        layout.addStretch()
 
-        hint = QLabel(
-            self.tr(
-                "内核为 SnowLuma 官方发布的专有组件，仅从官方 release 下载、不随本程序分发。"
-            )
-        )
-        hint.setWordWrap(True)
-
-        form.addRow(self.tr("核心状态"), self.core_status_value)
-        form.addRow(self.tr("内核版本"), self.core_version_value)
-        form.addRow(self.tr("下载源代理"), self.core_proxy_edit)
-        form.addRow(self.core_check_btn)
-        form.addRow(self.core_update_result)
-        form.addRow(hint)
-
+        self._core_runtime_timer = QTimer(self)
+        self._core_runtime_timer.timeout.connect(self._refresh_core_runtime_status)
+        self._core_runtime_timer.start(500)
+        self._refresh_core_actions()
+        self._refresh_core_runtime_status()
         return widget
+
+    def _runtime_display(self) -> tuple[str, str, str]:
+        snapshot = get_core_runtime()
+        mapping = {
+            CoreRuntimeState.CONNECTED: (
+                self.tr("接收管道已连接"),
+                snapshot.detail or self.tr("正在监听 QQ 消息"),
+                "#16833b",
+            ),
+            CoreRuntimeState.WAITING: (
+                self.tr("等待接收管道"),
+                snapshot.detail or self.tr("核心已映射，但监听链路尚未连通"),
+                "#c27a00",
+            ),
+            CoreRuntimeState.NO_QQ: (
+                self.tr("未找到 QQ"),
+                snapshot.detail or self.tr("请先启动 QQ 主进程"),
+                "#c27a00",
+            ),
+            CoreRuntimeState.ERROR: (
+                self.tr("核心运行异常"),
+                snapshot.detail,
+                "#c42b1c",
+            ),
+            CoreRuntimeState.PAUSED: (
+                self.tr("监听已暂停"),
+                snapshot.detail,
+                "#6b6b6b",
+            ),
+            CoreRuntimeState.DETACHED: (
+                self.tr("核心已卸载"),
+                snapshot.detail,
+                "#6b6b6b",
+            ),
+            CoreRuntimeState.UNSUPPORTED: (
+                self.tr("当前平台不可用"),
+                snapshot.detail,
+                "#6b6b6b",
+            ),
+        }
+        return mapping[snapshot.state]
+
+    def _refresh_core_runtime_status(self):
+        if not hasattr(self, "core_runtime_title"):
+            return
+        title, detail, color = self._runtime_display()
+        self.core_runtime_title.setText(title)
+        self.core_runtime_detail.setText(detail)
+        self.core_runtime_dot.setStyleSheet(f"font-size: 18px; color: {color};")
+        self._refresh_notification_status()
+
+    def _refresh_core_actions(self):
+        if not hasattr(self, "core_toggle_btn"):
+            return
+        state = get_core_state()
+        self.core_toggle_btn.setText(
+            self.tr("暂停监听") if state == CoreState.RUNNING else self.tr("启动监听")
+        )
+        self.core_toggle_btn.setIcon(FIF.PAUSE if state == CoreState.RUNNING else FIF.PLAY)
+        self.core_unload_btn.setEnabled(state != CoreState.DETACHED)
+
+    def _request_core_unload(self):
+        confirmed = show_fluent_message(
+            self,
+            self.tr("卸载核心"),
+            self.tr("将从 QQ 进程卸载核心并停止监听，确定继续？"),
+            yes_text=self.tr("卸载"),
+            cancel_text=self.tr("取消"),
+        )
+        if confirmed:
+            unload_core()
 
     def _core_version_text(self) -> str:
         if not is_core_installed():
@@ -581,7 +856,9 @@ class SettingsWindow(FluentWindow):
 
         if not status.has_update and status.installed:
             self.core_update_result.setText(
-                self.tr("已是最新: {ver}").format(ver=status.current_version or status.latest_version)
+                self.tr("已是最新: {ver}").format(
+                    ver=status.current_version or status.latest_version
+                )
             )
             self.core_check_btn.setEnabled(True)
             return
@@ -589,9 +866,9 @@ class SettingsWindow(FluentWindow):
         action = self.tr("安装") if not status.installed else self.tr("更新")
         confirmed = show_fluent_message(
             self,
-            self.tr("{action}内核").format(action=action),
+            self.tr("{action}核心").format(action=action),
             self.tr(
-                "将从 SnowLuma 官方 release 下载内核 {ver}。\n"
+                "将从 SnowLuma 官方 release 下载核心 {ver}。\n"
                 "该组件为 SnowLuma 专有，使用即表示遵守其许可。是否继续？"
             ).format(ver=status.latest_version),
             yes_text=action,
@@ -656,8 +933,8 @@ class SettingsWindow(FluentWindow):
         return [
             (self.tr("QQ 号"), self.data.get("User_QQ", "") or self.tr("未填写")),
             (
-                self.tr("重要人物"),
-                str(len(self.data.get("Important_Persons", self.settings.important_persons))),
+                self.tr("重要人物 QQ"),
+                str(len(self.data.get("Important_Person_QQs", self.settings.important_person_qqs))),
             ),
             (
                 self.tr("重要关键词"),
@@ -673,10 +950,6 @@ class SettingsWindow(FluentWindow):
         """基本设置标签页"""
         widget = QWidget()
         form = QFormLayout(widget)
-
-        self.scan_interval = DoubleSpinBox()
-        self.scan_interval.setRange(0.1, 10)
-        self.scan_interval.setValue(self.data.get("ScanInterval", self.settings.scan_interval))
 
         self.cooldown = SpinBox()
         self.cooldown.setRange(0, 60)
@@ -706,7 +979,6 @@ class SettingsWindow(FluentWindow):
         if not is_auto_start_supported():
             self.auto_start.setToolTip(self.tr("开机自启动目前仅支持 Windows"))
 
-        form.addRow(self.tr("扫描间隔 (秒)"), self.scan_interval)
         form.addRow(self.tr("冷却时间 (秒)"), self.cooldown)
         form.addRow(self.tr("QQ 号"), self.user_qq)
         form.addRow(self.tr("界面语言"), self.language_combo)
@@ -718,33 +990,96 @@ class SettingsWindow(FluentWindow):
         """规则设置标签页"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setSpacing(12)
 
-        layout.addWidget(QLabel(self.tr("重要人物")))
-        self.list_persons = self._create_list(
-            self.data.get("Important_Persons", self.settings.important_persons)
+        hint = QLabel(
+            self.tr(
+                "所有编号均为精确匹配。黑名单优先；启用白名单后，群号或发送者 QQ 任一命中即可通知。白名单为空时会阻止全部消息。"
+            )
         )
-        layout.addWidget(self.list_persons)
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #606060;")
+        layout.addWidget(hint)
 
-        layout.addWidget(QLabel(self.tr("重要关键词")))
+        important_row = QHBoxLayout()
+        important_row.setSpacing(16)
+        person_column = QVBoxLayout()
+        person_column.addWidget(self._section_label(self.tr("重要人物 QQ 号")))
+        self.list_important_person_qqs = self._create_list(
+            self.data.get("Important_Person_QQs", self.settings.important_person_qqs),
+            placeholder=self.tr("输入 QQ 号"),
+            numeric_only=True,
+        )
+        person_column.addWidget(self.list_important_person_qqs)
+
+        keyword_column = QVBoxLayout()
+        keyword_column.addWidget(self._section_label(self.tr("重要关键词")))
         self.list_keywords = self._create_list(
-            self.data.get("Important_Keywords", self.settings.important_keywords)
+            self.data.get("Important_Keywords", self.settings.important_keywords),
+            placeholder=self.tr("输入消息关键词"),
         )
-        layout.addWidget(self.list_keywords)
+        keyword_column.addWidget(self.list_keywords)
+        important_row.addLayout(person_column, 1)
+        important_row.addLayout(keyword_column, 1)
+        layout.addLayout(important_row)
 
-        layout.addWidget(QLabel(self.tr("黑名单")))
-        self.list_black = self._create_list(self.data.get("BlackList", self.settings.blacklist))
-        layout.addWidget(self.list_black)
+        switch_row = QHBoxLayout()
+        self.whitelist_enabled = CheckBox(self.tr("启用白名单"))
+        self.whitelist_enabled.setChecked(
+            self.data.get("Whitelist_Enabled", self.settings.whitelist_enabled)
+        )
+        self.blacklist_enabled = CheckBox(self.tr("启用黑名单"))
+        self.blacklist_enabled.setChecked(
+            self.data.get("Blacklist_Enabled", self.settings.blacklist_enabled)
+        )
+        switch_row.addWidget(self.whitelist_enabled)
+        switch_row.addWidget(self.blacklist_enabled)
+        switch_row.addStretch()
+        layout.addLayout(switch_row)
 
-        layout.addWidget(QLabel(self.tr("白名单")))
-        self.list_white = self._create_list(self.data.get("WhiteList", self.settings.whitelist))
-        layout.addWidget(self.list_white)
+        lists_row = QHBoxLayout()
+        lists_row.setSpacing(16)
 
-        self.someone_at_me = CheckBox(self.tr("当 [有人@我] 时将通知优先级设为最高"))
+        white_column = QVBoxLayout()
+        white_column.addWidget(self._section_label(self.tr("白名单群号")))
+        self.list_whitelist_groups = self._create_list(
+            self.data.get("Whitelist_Groups", self.settings.whitelist_groups),
+            placeholder=self.tr("输入群号"),
+            numeric_only=True,
+        )
+        white_column.addWidget(self.list_whitelist_groups)
+        white_column.addWidget(self._section_label(self.tr("白名单人物 QQ 号")))
+        self.list_whitelist_person_qqs = self._create_list(
+            self.data.get("Whitelist_Person_QQs", self.settings.whitelist_person_qqs),
+            placeholder=self.tr("输入 QQ 号"),
+            numeric_only=True,
+        )
+        white_column.addWidget(self.list_whitelist_person_qqs)
+
+        black_column = QVBoxLayout()
+        black_column.addWidget(self._section_label(self.tr("黑名单群号")))
+        self.list_blacklist_groups = self._create_list(
+            self.data.get("Blacklist_Groups", self.settings.blacklist_groups),
+            placeholder=self.tr("输入群号"),
+            numeric_only=True,
+        )
+        black_column.addWidget(self.list_blacklist_groups)
+        black_column.addWidget(self._section_label(self.tr("黑名单人物 QQ 号")))
+        self.list_blacklist_person_qqs = self._create_list(
+            self.data.get("Blacklist_Person_QQs", self.settings.blacklist_person_qqs),
+            placeholder=self.tr("输入 QQ 号"),
+            numeric_only=True,
+        )
+        black_column.addWidget(self.list_blacklist_person_qqs)
+
+        lists_row.addLayout(white_column, 1)
+        lists_row.addLayout(black_column, 1)
+        layout.addLayout(lists_row)
+
+        self.someone_at_me = CheckBox(self.tr("当有人 @ 我时设为重要通知"))
         self.someone_at_me.setChecked(self.data.get("Someone_At_Me", self.settings.someone_at_me))
-        self.qq_only = CheckBox(self.tr("仅监控 QQ 消息（推荐）"))
-        self.qq_only.setChecked(self.data.get("QQ_Only", self.settings.qq_only))
         layout.addWidget(self.someone_at_me)
-        layout.addWidget(self.qq_only)
+        layout.addStretch()
 
         return widget
 
@@ -762,7 +1097,8 @@ class SettingsWindow(FluentWindow):
         self.notify_mask = CheckBox(self.tr("通知窗口启用遮罩"))
         self.notify_mask.setChecked(self.data.get("Notify_Mask", self.settings.notify_mask))
         self.show_status_ball = SwitchButton()
-        self.show_status_ball.setText(self.tr("显示悬浮球"))
+        self.show_status_ball.setOnText(self.tr("已显示悬浮球"))
+        self.show_status_ball.setOffText(self.tr("已隐藏悬浮球"))
         self.show_status_ball.setChecked(
             self.data.get("Show_Status_Ball", self.settings.show_status_ball)
         )
@@ -774,6 +1110,7 @@ class SettingsWindow(FluentWindow):
         self.notify_ok_layout = QHBoxLayout()
         self.notify_icon_ok = self._line_edit(self.data.get("icon_ok", self.settings.icon_ok))
         self.notify_ok_select = PushButton(self.tr("浏览"))
+        self.notify_ok_select.setIcon(FIF.FOLDER)
         self.notify_ok_select.clicked.connect(lambda: self._select_file(self.notify_icon_ok))
         self.notify_ok_layout.addWidget(self.notify_icon_ok)
         self.notify_ok_layout.addWidget(self.notify_ok_select)
@@ -783,6 +1120,7 @@ class SettingsWindow(FluentWindow):
             self.data.get("icon_cancel", self.settings.icon_cancel)
         )
         self.notify_cancel_select = PushButton(self.tr("浏览"))
+        self.notify_cancel_select.setIcon(FIF.FOLDER)
         self.notify_cancel_select.clicked.connect(
             lambda: self._select_file(self.notify_icon_cancel)
         )
@@ -795,6 +1133,7 @@ class SettingsWindow(FluentWindow):
             self.data.get("Notify_Title_Font", self.settings.notify_title_font)
         )
         self.notify_title_select = PushButton(self.tr("浏览"))
+        self.notify_title_select.setIcon(FIF.FOLDER)
         self.notify_title_select.clicked.connect(lambda: self._select_file(self.notify_title_font))
         self.notify_title_layout.addWidget(self.notify_title_font)
         self.notify_title_layout.addWidget(self.notify_title_select)
@@ -804,6 +1143,7 @@ class SettingsWindow(FluentWindow):
             self.data.get("Notify_Message_Font", self.settings.notify_message_font)
         )
         self.notify_message_select = PushButton(self.tr("浏览"))
+        self.notify_message_select.setIcon(FIF.FOLDER)
         self.notify_message_select.clicked.connect(
             lambda: self._select_file(self.notify_message_font)
         )
@@ -838,12 +1178,6 @@ class SettingsWindow(FluentWindow):
 
         self.always_on_top = CheckBox(self.tr("通知始终置顶"))
         self.always_on_top.setChecked(self.data.get("Always_On_Top", self.settings.always_on_top))
-
-        self.max_wait = SpinBox()
-        self.max_wait.setRange(1, 20)
-        self.max_wait.setValue(
-            self.data.get("Max_Wait_Thumb_Time", self.settings.max_wait_thumb_time)
-        )
 
         self.duration_everyone = SpinBox()
         self.duration_everyone.setRange(1000, 20000)
@@ -907,6 +1241,7 @@ class SettingsWindow(FluentWindow):
         self.edge_test_text = self._line_edit(self.tr("你好呀，这里是 EdgeTTS 酱哦~"))
         self.edge_test_layout = QHBoxLayout()
         self.edge_test_btn = PushButton(self.tr("试听"))
+        self.edge_test_btn.setIcon(FIF.PLAY)
         self.edge_test_btn.clicked.connect(self._on_edge_test)
         self.edge_test_layout.addWidget(self.edge_test_text)
         self.edge_test_layout.addWidget(self.edge_test_btn)
@@ -918,7 +1253,6 @@ class SettingsWindow(FluentWindow):
         self.edge_tts_warning.setWordWrap(True)
         form.addRow(self.auto_thumb)
         form.addRow(self.always_on_top)
-        form.addRow(self.tr("最大等待缩略图时间(s)"), self.max_wait)
         form.addRow(self.tr("普通通知时长(ms)"), self.duration_everyone)
         form.addRow(self.tr("重要通知时长(ms)"), self.duration_important)
         form.addRow(self.tts)
@@ -977,8 +1311,10 @@ class SettingsWindow(FluentWindow):
             self.data.get("Sound_Effect_Normal", self.settings.sound_normal)
         )
         btn1 = PushButton(self.tr("浏览"))
+        btn1.setIcon(FIF.FOLDER)
         btn1.clicked.connect(lambda: self._select_file(self.sound_normal))
         btn3 = PushButton(self.tr("试听"))
+        btn3.setIcon(FIF.PLAY)
         btn3.clicked.connect(lambda: self._test_sound(self.sound_normal))
 
         row1 = QHBoxLayout()
@@ -990,8 +1326,10 @@ class SettingsWindow(FluentWindow):
             self.data.get("Sound_Effect_Important", self.settings.sound_important)
         )
         btn2 = PushButton(self.tr("浏览"))
+        btn2.setIcon(FIF.FOLDER)
         btn2.clicked.connect(lambda: self._select_file(self.sound_important))
         btn4 = PushButton(self.tr("试听"))
+        btn4.setIcon(FIF.PLAY)
         btn4.clicked.connect(lambda: self._test_sound(self.sound_important))
 
         row2 = QHBoxLayout()
@@ -1009,7 +1347,7 @@ class SettingsWindow(FluentWindow):
         form = QFormLayout(content)
 
         hint = QLabel(
-            self.tr("捕获方式：原生注入（SnowLuma 内核）。核心开关请在悬浮球或首页状态徽章上操作。")
+            self.tr("捕获方式：核心注入（SnowLuma）。核心开关请在悬浮球或首页状态徽章上操作。")
         )
         hint.setWordWrap(True)
         form.addRow(hint)
@@ -1056,10 +1394,13 @@ class SettingsWindow(FluentWindow):
 
         self.button_layout = QHBoxLayout()
         self.clear = PushButton(self.tr("清除缓存"))
+        self.clear.setIcon(FIF.DELETE)
         self.clear.clicked.connect(self._clear_cache)
         self.help = PushButton(self.tr("查看教程"))
+        self.help.setIcon(FIF.HELP)
         self.help.clicked.connect(lambda: webbrowser.open("https://xxtsoft.top/support/qqlistener"))
         self.translation = PushButton(self.tr("提交翻译"))
+        self.translation.setIcon(FIF.SEND)
         self.translation.clicked.connect(
             lambda: webbrowser.open("https://xxtsoft.top/support/qqlistener/translation")
         )
@@ -1089,21 +1430,36 @@ class SettingsWindow(FluentWindow):
         ):
             webbrowser.open("https://xxtsoft.top/donate")
 
-    def _create_list(self, items):
+    def _create_list(self, items, placeholder=None, numeric_only=False):
         """创建列表组件"""
         container = QWidget()
         layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
         list_widget = ListWidget()
+        list_widget.setFixedHeight(96)
+        list_widget.setStyleSheet("""
+            ListWidget {
+                color: #202020;
+                background: rgba(255, 255, 255, 215);
+                border: 1px solid #dfe5ec;
+                border-radius: 8px;
+            }
+        """)
         for item in items:
             list_widget.addItem(item)
 
         input_line = LineEdit()
-        input_line.setPlaceholderText(self.tr("输入后点击添加。也可使用回车键"))
-        input_line.returnPressed.connect(lambda: self._add_item(list_widget, input_line))
+        input_line.setPlaceholderText(placeholder or self.tr("输入后点击添加，也可按回车"))
+        input_line.returnPressed.connect(
+            lambda: self._add_item(list_widget, input_line, numeric_only)
+        )
         btn_add = PushButton(self.tr("添加"))
         btn_remove = PushButton(self.tr("删除选中"))
-        btn_add.clicked.connect(lambda: self._add_item(list_widget, input_line))
+        btn_add.setIcon(FIF.ADD)
+        btn_remove.setIcon(FIF.DELETE)
+        btn_add.clicked.connect(lambda: self._add_item(list_widget, input_line, numeric_only))
         btn_remove.clicked.connect(lambda: self._remove_item(list_widget))
 
         layout.addWidget(list_widget)
@@ -1114,13 +1470,17 @@ class SettingsWindow(FluentWindow):
         btn_row.addWidget(btn_remove)
         layout.addLayout(btn_row)
         container.list_widget = list_widget
+        container.setMaximumHeight(154)
 
         return container
 
-    def _add_item(self, widget, line):
+    def _add_item(self, widget, line, numeric_only=False):
         """添加列表项"""
         text = line.text().strip()
         if not text:
+            return
+        if numeric_only and not text.isdecimal():
+            show_fluent_message(self, self.tr("提示"), self.tr("这里只能填写数字编号"))
             return
         for i in range(widget.count()):
             if widget.item(i).text() == text:
@@ -1291,20 +1651,22 @@ class SettingsWindow(FluentWindow):
 
         self.settings.update(
             {
-                "ScanInterval": self.scan_interval.value(),
                 "Cooldown": self.cooldown.value(),
                 "Auto_Start": auto_start_enabled,
                 "User_QQ": self.user_qq.text(),
                 "Core_Download_Proxy": self.core_proxy_edit.text().strip(),
-                "Important_Persons": self._get_list(self.list_persons),
+                "Important_Person_QQs": self._get_list(self.list_important_person_qqs),
                 "Important_Keywords": self._get_list(self.list_keywords),
-                "BlackList": self._get_list(self.list_black),
-                "WhiteList": self._get_list(self.list_white),
+                "Whitelist_Enabled": self.whitelist_enabled.isChecked(),
+                "Blacklist_Enabled": self.blacklist_enabled.isChecked(),
+                "Whitelist_Groups": self._get_list(self.list_whitelist_groups),
+                "Blacklist_Groups": self._get_list(self.list_blacklist_groups),
+                "Whitelist_Person_QQs": self._get_list(self.list_whitelist_person_qqs),
+                "Blacklist_Person_QQs": self._get_list(self.list_blacklist_person_qqs),
                 "Sound_Effect_Normal": self.sound_normal.text(),
                 "Sound_Effect_Important": self.sound_important.text(),
                 "Auto_Show_Thumb": self.auto_thumb.isChecked(),
                 "Always_On_Top": self.always_on_top.isChecked(),
-                "Max_Wait_Thumb_Time": self.max_wait.value(),
                 "Duration_Everyone": self.duration_everyone.value(),
                 "Duration_Important": self.duration_important.value(),
                 "Notify_Shadow": self.notify_shadow.isChecked(),
@@ -1323,7 +1685,6 @@ class SettingsWindow(FluentWindow):
                 "Edge_Pitch": f"{self.edge_pitch.value():+d}Hz",
                 "Green_Hand": False,
                 "Language": self._get_language_code(),
-                "QQ_Only": self.qq_only.isChecked(),
                 "Notify_Mask": self.notify_mask.isChecked(),
                 "Calling_BPM": self.calling_bpm.value(),
                 "Calling_Animation": self.calling_anim.isChecked(),

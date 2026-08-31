@@ -5,6 +5,29 @@ from typing import Any
 
 from loguru import logger
 
+LEGACY_SETTING_KEYS = frozenset(
+    {
+        "App",
+        "Version",
+        "Tencent_Files_Path",
+        "NotificationEngine",
+        "UIAMode",
+        "Important_Persons",
+        "BlackList",
+        "WhiteList",
+        "QQ_Only",
+        "OneBotV11_WS_URL",
+        "OneBotV11_Access_Token",
+        "HTTPPush_Enabled",
+        "HTTPPush_Host",
+        "HTTPPush_Port",
+        "HTTPPush_Path",
+        "HTTPPush_Token",
+        "ScanInterval",
+        "Max_Wait_Thumb_Time",
+    }
+)
+
 
 class Settings:
     _instance: "Settings | None" = None
@@ -49,6 +72,7 @@ class Settings:
                 with open(self._settings_file, encoding="utf-8") as f:
                     loaded_data = json.load(f)
                     self._data = loaded_data if isinstance(loaded_data, dict) else {}
+                    self._drop_legacy_keys()
             except (json.JSONDecodeError, OSError):
                 logger.exception("加载设置失败")
                 self._data = {}
@@ -60,6 +84,7 @@ class Settings:
             return False
 
         try:
+            self._drop_legacy_keys()
             with open(self._settings_file, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=4, ensure_ascii=False)
             return True
@@ -81,7 +106,12 @@ class Settings:
             return False
 
         self._data = loaded_data if isinstance(loaded_data, dict) else {}
+        self._drop_legacy_keys()
         return self.get_all() != old_data
+
+    def _drop_legacy_keys(self) -> None:
+        for key in LEGACY_SETTING_KEYS:
+            self._data.pop(key, None)
 
     def get(self, key: str, default: Any = None) -> Any:
         if not key or not isinstance(key, str):
@@ -116,8 +146,8 @@ class Settings:
         self._data["Green_Hand"] = False
 
     @property
-    def important_persons(self) -> list[str]:
-        result = self.get("Important_Persons", [])
+    def important_person_qqs(self) -> list[str]:
+        result = self.get("Important_Person_QQs", [])
         return result if isinstance(result, list) else []
 
     @property
@@ -126,19 +156,32 @@ class Settings:
         return result if isinstance(result, list) else []
 
     @property
-    def blacklist(self) -> list[str]:
-        result = self.get("BlackList", [])
+    def whitelist_enabled(self) -> bool:
+        return bool(self.get("Whitelist_Enabled", False))
+
+    @property
+    def blacklist_enabled(self) -> bool:
+        return bool(self.get("Blacklist_Enabled", False))
+
+    @property
+    def whitelist_groups(self) -> list[str]:
+        result = self.get("Whitelist_Groups", [])
         return result if isinstance(result, list) else []
 
     @property
-    def whitelist(self) -> list[str]:
-        result = self.get("WhiteList", [])
+    def blacklist_groups(self) -> list[str]:
+        result = self.get("Blacklist_Groups", [])
         return result if isinstance(result, list) else []
 
     @property
-    def scan_interval(self) -> float:
-        result = self.get("ScanInterval", 0.3)
-        return float(result) if isinstance(result, (int, float)) else 0.3
+    def whitelist_person_qqs(self) -> list[str]:
+        result = self.get("Whitelist_Person_QQs", [])
+        return result if isinstance(result, list) else []
+
+    @property
+    def blacklist_person_qqs(self) -> list[str]:
+        result = self.get("Blacklist_Person_QQs", [])
+        return result if isinstance(result, list) else []
 
     @property
     def cooldown(self) -> int:
@@ -148,10 +191,6 @@ class Settings:
     @property
     def auto_start(self) -> bool:
         return bool(self.get("Auto_Start", False))
-
-    @property
-    def qq_only(self) -> bool:
-        return bool(self.get("QQ_Only", False))
 
     @property
     def auto_show_thumb(self) -> bool:
@@ -221,11 +260,6 @@ class Settings:
     def duration_important(self) -> int:
         result = self.get("Duration_Important", 10000)
         return int(result) if isinstance(result, (int, float)) else 10000
-
-    @property
-    def max_wait_thumb_time(self) -> int:
-        result = self.get("Max_Wait_Thumb_Time", 5)
-        return int(result) if isinstance(result, (int, float)) else 5
 
     @property
     def always_on_top(self) -> bool:

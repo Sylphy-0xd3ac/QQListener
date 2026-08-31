@@ -3,6 +3,7 @@ from typing import Protocol
 
 class PipeTransport(Protocol):
     def read(self, n: int) -> bytes: ...
+    def write(self, data: bytes) -> None: ...
     def close(self) -> None: ...
 
 
@@ -27,6 +28,9 @@ class Win32NamedPipeTransport:
         _, data = self._win32file.ReadFile(self._handle, n)
         return bytes(data)
 
+    def write(self, data: bytes) -> None:
+        self._win32file.WriteFile(self._handle, bytes(data))
+
     def close(self) -> None:
         if self._handle is not None:
             self._win32file.CloseHandle(self._handle)
@@ -39,11 +43,17 @@ class FakeTransport:
     def __init__(self, chunks: list[bytes]) -> None:
         self._chunks = list(chunks)
         self._closed = False
+        self.writes: list[bytes] = []
 
     def read(self, n: int) -> bytes:
         if self._closed or not self._chunks:
             return b""
         return self._chunks.pop(0)
+
+    def write(self, data: bytes) -> None:
+        if self._closed:
+            raise OSError("transport is closed")
+        self.writes.append(bytes(data))
 
     def close(self) -> None:
         self._closed = True

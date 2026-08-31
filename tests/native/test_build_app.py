@@ -8,3 +8,5 @@ def test_windows_build_collects_delayed_pefile_import(monkeypatch):
 
     pairs = list(zip(command, command[1:], strict=False))
     assert ("--hidden-import", "pefile") in pairs
+    assert "uiautomation" not in command
+    assert not any("winsdk" in part.lower() for part in command)

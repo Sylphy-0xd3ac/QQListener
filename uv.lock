@@ -2799,27 +2799,14 @@ dependencies = [
     { name = "pyside6-fluent-widgets" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "truststore", marker = "sys_platform == 'win32'" },
-    { name = "uiautomation", marker = "sys_platform == 'win32'" },
-    { name = "winsdk", marker = "sys_platform == 'win32'" },
 ]
 
 [package.optional-dependencies]
 system-tts = [
     { name = "pyttsx3" },
 ]
-uia = [
-    { name = "uiautomation", marker = "sys_platform == 'win32'" },
-]
 win32 = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
-]
-windows = [
-    { name = "pycaw", marker = "sys_platform == 'win32'" },
-    { name = "uiautomation", marker = "sys_platform == 'win32'" },
-    { name = "winsdk", marker = "sys_platform == 'win32'" },
-]
-winsdk = [
-    { name = "winsdk", marker = "sys_platform == 'win32'" },
 ]
 
 [package.dev-dependencies]
@@ -2836,7 +2823,6 @@ requires-dist = [
     { name = "pefile", marker = "sys_platform == 'win32'", specifier = ">=2024.8.26" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pycaw", marker = "sys_platform == 'win32'", specifier = ">=20240210" },
-    { name = "pycaw", marker = "sys_platform == 'win32' and extra == 'windows'", specifier = ">=20240210" },
     { name = "pygame", specifier = ">=2.6.1" },
     { name = "pyside6", specifier = ">=6.7.0" },
     { name = "pyside6-fluent-widgets", specifier = ">=1.8.7" },
@@ -2844,14 +2830,8 @@ requires-dist = [
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311" },
     { name = "pywin32", marker = "sys_platform == 'win32' and extra == 'win32'", specifier = ">=311" },
     { name = "truststore", marker = "sys_platform == 'win32'", specifier = ">=0.10.4" },
-    { name = "uiautomation", marker = "sys_platform == 'win32'", specifier = ">=2.0.29" },
-    { name = "uiautomation", marker = "sys_platform == 'win32' and extra == 'uia'", specifier = ">=2.0.29" },
-    { name = "uiautomation", marker = "sys_platform == 'win32' and extra == 'windows'", specifier = ">=2.0.29" },
-    { name = "winsdk", marker = "sys_platform == 'win32'", specifier = ">=1.0.0b10" },
-    { name = "winsdk", marker = "sys_platform == 'win32' and extra == 'windows'", specifier = ">=1.0.0b10" },
-    { name = "winsdk", marker = "sys_platform == 'win32' and extra == 'winsdk'", specifier = ">=1.0.0b10" },
 ]
-provides-extras = ["winsdk", "uia", "windows", "system-tts", "win32"]
+provides-extras = ["system-tts", "win32"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2933,35 +2913,12 @@ wheels = [
 ]
 
 [[package]]
-name = "uiautomation"
-version = "2.0.29"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "comtypes" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/23/8238b5cb73e54c3618ce4d443c1830a2749264a0d61a9b61637096b8dc7a/uiautomation-2.0.29.tar.gz", hash = "sha256:3c169112043ce21065aead1d79c3baebdafc9cf03bd24ded02b2db11d423d88d", size = 203970, upload-time = "2025-08-05T05:14:41.194Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/27/b9c4b33b4129805fa2c437fa13da06c71e74213ae46da098d194d89834fe/uiautomation-2.0.29-py3-none-any.whl", hash = "sha256:5dd51c9e77e70470142a13d903be67f256c445e7cf20b47ada0ece2bdaff9f32", size = 198985, upload-time = "2025-08-05T05:14:39.552Z" },
-]
-
-[[package]]
 name = "win32-setctime"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/705086c9d734d3b663af0e9bb3d4de6578d08f46b1b101c2442fd9aecaa2/win32_setctime-1.2.0.tar.gz", hash = "sha256:ae1fdf948f5640aae05c511ade119313fb6a30d7eabe25fef9764dca5873c4c0", size = 4867, upload-time = "2024-12-07T15:28:28.314Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/07/c6fe3ad3e685340704d314d765b7912993bcb8dc198f0e7a89382d37974b/win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390", size = 4083, upload-time = "2024-12-07T15:28:26.465Z" },
-]
-
-[[package]]
-name = "winsdk"
-version = "1.0.0b10"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f5/01/005772332e79947013aa33c7cb20431e3efd6ac46eb54aed3472c14afe50/winsdk-1.0.0b10.tar.gz", hash = "sha256:8f39ea759626797449371f857c9085b84bb9f3b6d493dc6525e2cedcb3d15ea2", size = 7061492, upload-time = "2023-08-11T19:47:58.008Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/ef/f45dea4b452a29eb682ebca3818b5cea79f037bf07959c36feb2084bc429/winsdk-1.0.0b10-cp310-cp310-win32.whl", hash = "sha256:90f75c67e166d588a045bcde0117a4631c705904f7af4ac42644479dcf0d8c52", size = 9455364, upload-time = "2023-08-11T19:47:25.017Z" },
-    { url = "https://files.pythonhosted.org/packages/ee/67/4789874fb923a56bf726cb24fa8ac0bdff9bb3a976653b6f6af9fccab32e/winsdk-1.0.0b10-cp310-cp310-win_amd64.whl", hash = "sha256:c3be3fbf692b8888bac8c0712c490c080ab8976649ef01f9f6365947f4e5a8b1", size = 12009746, upload-time = "2023-08-11T19:47:27.553Z" },
-    { url = "https://files.pythonhosted.org/packages/38/bb/c6770540a7f6c30aed352eafd60137150c1b53fcbec8e05b4e4c5f533978/winsdk-1.0.0b10-cp310-cp310-win_arm64.whl", hash = "sha256:6ab69dd65d959d94939c21974a33f4f1dfa625106c8784435ecacbd8ff0bf74d", size = 11610083, upload-time = "2023-08-11T19:47:30.078Z" },
 ]
 
 [[package]]

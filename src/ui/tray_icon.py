@@ -4,6 +4,7 @@ from loguru import logger
 
 from src.core.resources import app_icon_path, app_icon_png_path
 from src.core.settings import get_settings
+from src.ui.fluent_compat import FluentIcon
 from src.ui.qt_compat import (
     QAction,
     QApplication,
@@ -53,6 +54,7 @@ class TrayIcon(QObject):
 
             # 设置动作
             settings_action = QAction("显示窗口", self)
+            settings_action.setIcon(FluentIcon.SETTING.icon())
             settings_action.triggered.connect(lambda *_: self.show_settings_signal.emit())
             self._menu.addAction(settings_action)
 
@@ -61,6 +63,7 @@ class TrayIcon(QObject):
 
             # 退出动作
             exit_action = QAction("退出", self)
+            exit_action.setIcon(FluentIcon.POWER_BUTTON.icon())
             exit_action.triggered.connect(lambda *_: self.exit_signal.emit())
             self._menu.addAction(exit_action)
             self._tray_icon.setContextMenu(self._menu)
@@ -85,11 +88,7 @@ class TrayIcon(QObject):
             QSystemTrayIcon.MiddleClick,
         }:
             self.show_settings_signal.emit()
-        elif (
-            reason == QSystemTrayIcon.Context
-            and sys.platform == "win32"
-            and self._menu
-        ):
+        elif reason == QSystemTrayIcon.Context and sys.platform == "win32" and self._menu:
             self._menu.popup(QCursor.pos())
 
     def destroy(self):
