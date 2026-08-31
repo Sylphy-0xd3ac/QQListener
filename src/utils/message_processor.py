@@ -60,11 +60,13 @@ class MessageProcessor:
         file_path: str | None = None,
     ) -> dict | None:
         body = message_text(msg)
-        if not body and not image_path and not file_path:
+        file_seg = next((s for s in msg.segments if s.type == "file"), None)
+        if not body and not image_path and not file_path and file_seg is None:
             return None
 
         sender_label = self._captured_sender_label(msg)
-        key = hashlib.md5(f"{sender_label}|{body}|{msg.raw_seq}".encode()).hexdigest()
+        key_data = f"{msg.scene}|{msg.peer_id}|{msg.sender_id}|{body}|{msg.raw_seq}"
+        key = hashlib.md5(key_data.encode()).hexdigest()
         now = time.time()
         dedupe_window = max(float(self.settings.cooldown), 1.0)
         if key in self.seen and now - self.seen[key] < dedupe_window:
@@ -110,7 +112,6 @@ class MessageProcessor:
             notify_data["Pic_Path"] = image_path
         if file_path:
             notify_data["file_target"] = file_path
-        file_seg = next((s for s in msg.segments if s.type == "file"), None)
         if file_seg is not None:
             notify_data["file_name"] = file_seg.name or "QQ 文件"
             if not notify_data.get("file_target") and file_seg.url:

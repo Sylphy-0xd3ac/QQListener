@@ -35,10 +35,10 @@ def _make_processor(settings):
     return mp
 
 
-def _group_msg(text="明天带作业", sender_name="张三", segments=None, seq=1):
+def _group_msg(text="明天带作业", sender_name="张三", segments=None, seq=1, peer_id="123"):
     return CapturedMessage(
         scene="group",
-        peer_id="123",
+        peer_id=peer_id,
         peer_name="高三2班",
         sender_id="1001",
         sender_name=sender_name,
@@ -137,6 +137,13 @@ def test_dedup_same_message_second_time_none():
     assert first is not None and second is None
 
 
+def test_same_sequence_and_body_in_different_conversations_are_not_deduplicated():
+    mp = _make_processor(FakeSettings())
+    first = mp.process_captured(_group_msg(seq=7, peer_id="123"))
+    second = mp.process_captured(_group_msg(seq=7, peer_id="456"))
+    assert first is not None and second is not None
+
+
 def test_image_path_sets_pic_path():
     mp = _make_processor(FakeSettings())
     msg = _group_msg(segments=[Segment(type="image", url="http://x")])
@@ -165,6 +172,18 @@ def test_file_url_renders_without_downloading_first():
     assert data is not None
     assert data["file_name"] == "群资料.pdf"
     assert data["file_target"] == "https://file.qq.com/download?id=1"
+    assert data["icon_file"] == "asset/FileIcon/pdf.png"
+
+
+def test_file_metadata_renders_when_url_resolution_failed():
+    mp = _make_processor(FakeSettings())
+    msg = _group_msg(segments=[Segment(type="file", name="群资料.pdf")])
+
+    data = mp.process_captured(msg)
+
+    assert data is not None
+    assert data["file_name"] == "群资料.pdf"
+    assert "file_target" not in data
     assert data["icon_file"] == "asset/FileIcon/pdf.png"
 
 
