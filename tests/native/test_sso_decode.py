@@ -80,6 +80,7 @@ def test_decode_private_text_from_real_ntqq_shape():
 def test_decode_group_text_uses_group_and_member_fields():
     group = (
         _varint_field(1, 30003)
+        + _len_field(2, "基础昵称".encode())
         + _len_field(4, "群名片".encode())
         + _len_field(7, "测试群".encode())
     )
@@ -99,9 +100,25 @@ def test_decode_group_text_uses_group_and_member_fields():
     assert msg.peer_name == "测试群"
     assert msg.sender_id == "10001"
     assert msg.sender_name == "群名片"
+    assert msg.sender_nickname == "基础昵称"
+    assert msg.sender_group_card == "群名片"
     assert msg.account_uid == ""
     assert msg.raw_seq == 41
     assert message_text(msg) == "群聊测试"
+
+
+def test_decode_private_forward_name_as_nickname():
+    text = _len_field(1, "私聊测试".encode())
+    rich_text = _len_field(2, _len_field(1, text))
+    forward = _len_field(6, "好友昵称".encode())
+
+    msg = decode_message_push(
+        _packet(_len_field(1, rich_text), response_extra=_len_field(7, forward))
+    )
+
+    assert msg is not None
+    assert msg.sender_name == "好友昵称"
+    assert msg.sender_nickname == "好友昵称"
 
 
 def test_decode_nt_common_image_from_private_push():

@@ -51,9 +51,42 @@ def test_basic_group_text_builds_notify_data():
     mp = _make_processor(FakeSettings())
     data = mp.process_captured(_group_msg())
     assert data is not None
-    assert "高三2班" in data["Sender"] and "张三" in data["Sender"]
+    assert data["Sender"] == "张三（高三2班） 1001"
     assert data["Message"] == "明天带作业"
     assert data["Priority"] == 1  # 非重要
+
+
+def test_group_sender_title_priority_is_remark_then_card_then_nickname():
+    mp = _make_processor(FakeSettings())
+    msg = _group_msg(sender_name="推送名称")
+    msg.sender_nickname = "基础昵称"
+    msg.sender_group_card = "群昵称"
+    msg.sender_remark = "好友备注"
+
+    assert mp._captured_sender_label(msg) == "好友备注（高三2班） 1001"
+    msg.sender_remark = ""
+    assert mp._captured_sender_label(msg) == "群昵称（高三2班） 1001"
+    msg.sender_group_card = ""
+    assert mp._captured_sender_label(msg) == "基础昵称（高三2班） 1001"
+
+
+def test_private_sender_title_priority_is_remark_then_nickname():
+    mp = _make_processor(FakeSettings())
+    msg = CapturedMessage(
+        scene="c2c",
+        peer_id="1001",
+        peer_name="",
+        sender_id="1001",
+        sender_name="",
+        sender_nickname="基础昵称",
+        sender_remark="好友备注",
+        segments=[Segment(type="text", text="你好")],
+        raw_seq=1,
+    )
+
+    assert mp._captured_sender_label(msg) == "好友备注 1001"
+    msg.sender_remark = ""
+    assert mp._captured_sender_label(msg) == "基础昵称 1001"
 
 
 def test_important_person_qq_raises_priority_by_exact_id():

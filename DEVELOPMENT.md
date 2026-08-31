@@ -51,6 +51,7 @@ src/
 │  ├─ capture.py         recv/control 管道连接
 │  ├─ control_client.py  HQP1 控制请求
 │  ├─ file_resolver.py   私聊/群聊文件 URL 解析
+│  ├─ profile_resolver.py 通过 0xFE1_2 解析备注与昵称
 │  ├─ hqp1.py            HQP1 帧协议
 │  ├─ injector.py        64 位 Windows 手动映射
 │  ├─ sso_decode.py      SSO PushMsg 解码
@@ -89,6 +90,10 @@ src/
 2. 启用的白名单随后检查；群聊由群号或人物 QQ 任一命中即允许，私聊由人物 QQ 命中允许。
 3. 启用但为空的白名单拒绝所有消息（fail closed）。
 4. 通过过滤后，再按重要人物 QQ、关键词、@我和呼叫规则计算优先级。
+
+通知标题的姓名优先级为：私聊 `备注 > 昵称`；群聊
+`备注 > 群昵称/群名片 > 昵称`。首次遇到未缓存的发送者时，worker 通过 control 管道调用
+OIDB `0xFE1_2` 请求备注（属性 103）和昵称（属性 20002），同一 QQ 进程会话内复用结果。
 
 `Settings` 会在加载与保存时移除旧 Toast/目录扫描/OneBot 等配置键，防止它们继续出现在
 运行时配置中。

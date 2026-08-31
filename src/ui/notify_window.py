@@ -278,6 +278,7 @@ class NotifyWindow(QWidget):
                 QFont.Bold,
             )
         )
+        label_sender.setWordWrap(True)
         label_sender.setStyleSheet("color: #111111; border: none; background: transparent;")
         self.main_layout.addWidget(label_sender)
 

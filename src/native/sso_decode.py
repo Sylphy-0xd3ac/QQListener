@@ -85,12 +85,16 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
 
     sender_id = str(from_uin) if from_uin else from_uid
     sender_name = ""
+    sender_nickname = ""
+    sender_group_card = ""
     peer_name = ""
     account_uid = ""
     if is_group:
         peer_id = str(group_uin) if group_uin else ""
         peer_name = _field_str(group, _F_GROUP_NAME)
-        sender_name = _field_str(group, _F_MEMBER_NAME) or _field_str(group, _F_MEMBER_CARD)
+        sender_nickname = _field_str(group, _F_MEMBER_NAME)
+        sender_group_card = _field_str(group, _F_MEMBER_CARD)
+        sender_name = sender_group_card or sender_nickname
     else:
         try:
             self_uin = int(packet.uin)
@@ -102,6 +106,7 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
         forward_data = _field_bytes(response, _F_FORWARD)
         if forward_data:
             sender_name = _field_str(decode_fields(forward_data), _F_FRIEND_NAME)
+            sender_nickname = sender_name
 
     sequence = _field_int(content, _F_SEQUENCE)
     nt_sequence = _field_int(content, _F_NT_MSG_SEQUENCE)
@@ -116,4 +121,6 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
         segments=segments,
         raw_seq=raw_seq or packet.seq,
         account_uid=account_uid,
+        sender_nickname=sender_nickname,
+        sender_group_card=sender_group_card,
     )
