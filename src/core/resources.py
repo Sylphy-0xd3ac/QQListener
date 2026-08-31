@@ -3,16 +3,23 @@ from pathlib import Path
 
 
 def app_root() -> Path:
+    """可持久写入的应用根目录（配置和用户下载的核心放在这里）。"""
     if getattr(sys, "frozen", False):
-        bundle_root = getattr(sys, "_MEIPASS", None)
-        if bundle_root:
-            return Path(bundle_root)
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[2]
 
 
+def bundle_root() -> Path:
+    """打包资源根目录；PyInstaller onefile 下指向本次运行的解包目录。"""
+    if getattr(sys, "frozen", False):
+        extracted = getattr(sys, "_MEIPASS", None)
+        if extracted:
+            return Path(extracted)
+    return app_root()
+
+
 def resource_path(*parts: str) -> Path:
-    return app_root().joinpath(*parts)
+    return bundle_root().joinpath(*parts)
 
 
 def app_icon_path() -> Path:

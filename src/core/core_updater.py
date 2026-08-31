@@ -37,11 +37,9 @@ def core_supported() -> bool:
     """当前平台是否有 SnowLuma 官方内核（目前仅 Windows x64）。"""
     return sys.platform == "win32"
 
-# 需要安装的内核二进制（钩子 + 注入器）。ffmpeg/websocket 附加组件按需扩展。
-CORE_BINARY_NAMES = (
-    "snowluma-win32-x64.dll",
-    "snowluma-win32-x64.node",
-)
+
+# Python 装载器只需要钩子 DLL；不再下载 SnowLuma 的 Node 原生装载器。
+CORE_BINARY_NAMES = ("snowluma-win32-x64.dll",)
 
 
 def native_dir() -> Path:

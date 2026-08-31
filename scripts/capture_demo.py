@@ -1,6 +1,6 @@
 """端到端 demo：把 RecvCapture 跑起来，打印 CapturedMessage。
 
-前置同 probe_recv.py（QQ 已注入 SnowLuma .dll）。用法：python scripts/capture_demo.py
+前置同 probe_recv.py（核心已由 Python 装载器装入 QQ）。用法：python scripts/capture_demo.py
 """
 
 import asyncio

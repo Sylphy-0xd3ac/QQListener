@@ -86,6 +86,7 @@ def test_extract_core_binaries(tmp_path):
         zf.writestr("SnowLuma/native/snowluma-win32-x64.node", b"node-bin")
         zf.writestr("SnowLuma/README.md", b"readme")
     installed = cu._extract_core_binaries(buf.getvalue(), tmp_path)
-    assert set(installed) == {"snowluma-win32-x64.dll", "snowluma-win32-x64.node"}
+    assert installed == ["snowluma-win32-x64.dll"]
     assert (tmp_path / "snowluma-win32-x64.dll").read_bytes() == b"MZ-dll"
+    assert not (tmp_path / "snowluma-win32-x64.node").exists()
     assert not (tmp_path / "README.md").exists()

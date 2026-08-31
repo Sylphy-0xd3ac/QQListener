@@ -2,11 +2,16 @@ import os
 
 HOOK_DLL_NAME = "snowluma-win32-x64.dll"
 
-_DEFAULT_DIRS = ["native", os.path.join("asset", "native")]
+
+def _default_dirs() -> list[str]:
+    from src.core.resources import app_root
+
+    root = app_root()
+    return [str(root / "native"), str(root / "asset" / "native")]
 
 
 def find_hook_binary(search_dirs: list[str] | None = None) -> str | None:
-    dirs = search_dirs if search_dirs is not None else _DEFAULT_DIRS
+    dirs = search_dirs if search_dirs is not None else _default_dirs()
     for d in dirs:
         candidate = os.path.join(d, HOOK_DLL_NAME)
         if os.path.exists(candidate):
