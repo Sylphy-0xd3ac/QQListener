@@ -105,7 +105,7 @@ class CoreSetupDialog(QDialog):
         proxy_row.addWidget(QLabel("下载源代理"))
         self._proxy_edit = LineEdit()
         self._proxy_edit.setText(str(self._settings.get("Core_Download_Proxy", "") or ""))
-        self._proxy_edit.setPlaceholderText("留空走 GitHub 官方；国内可填代理，如 https://ghproxy.com")
+        self._proxy_edit.setPlaceholderText("留空走 GitHub 官方；国内可填代理，如 https://ghfast.top")
         proxy_row.addWidget(self._proxy_edit, 1)
         layout.addLayout(proxy_row)
 
