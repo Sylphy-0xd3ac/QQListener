@@ -74,8 +74,7 @@ jobs:
             "PySide2>=5.15.2.1,<5.16" \
             "PySide2-Fluent-Widgets>=1.8.7" \
             "pycaw>=20240210; sys_platform == 'win32'" \
-            "uiautomation>=2.0.29; sys_platform == 'win32'" \
-            "winsdk>=1.0.0b10; sys_platform == 'win32'" \
+            "pywin32>=311; sys_platform == 'win32'" \
             "pyinstaller>=6.10,<7"
           uv pip uninstall -y \
             PySide6 \

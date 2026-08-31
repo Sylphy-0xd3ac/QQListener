@@ -3,6 +3,10 @@ import sys
 
 import pygame
 from loguru import logger
+
+from src.core.settings import get_settings
+from src.ui.fluent_compat import FluentIcon as FIF
+from src.ui.fluent_compat import IconWidget, PrimaryPushButton, PushButton
 from src.ui.qt_compat import (
     QApplication,
     QColor,
@@ -22,14 +26,12 @@ from src.ui.qt_compat import (
     Qt,
     QTimer,
     QUrl,
-    QVBoxLayout,
     QVariantAnimation,
+    QVBoxLayout,
     QWidget,
     load_icon,
 )
-
-from src.core.settings import get_settings
-from src.ui.fluent_compat import PrimaryPushButton, PushButton
+from src.utils.media import is_http_url, local_path_from_ref, safe_filename
 from src.utils.tts import TTSManager
 
 PRIORITY_STYLES = {
@@ -51,19 +53,38 @@ PRIORITY_STYLES = {
 }
 
 
+def attachment_qurl(target: object) -> QUrl | None:
+    local_path = local_path_from_ref(target)
+    if local_path:
+        return QUrl.fromLocalFile(os.path.abspath(local_path))
+    if is_http_url(target):
+        return QUrl(str(target))
+    return None
+
+
+def open_attachment(target: object) -> bool:
+    url = attachment_qurl(target)
+    if url is None:
+        return False
+    return bool(QDesktopServices.openUrl(url))
+
+
 class FilePreview(QFrame):
     """文件附件预览控件"""
 
-    def __init__(self, file_path, icon_path=None):
+    def __init__(self, file_target, file_name="", icon_path=None):
         super().__init__()
-        self.file_path = file_path
-        self.setFixedHeight(50)
-        self.setCursor(Qt.PointingHandCursor)
+        self.file_target = file_target
+        self.file_name = file_name or safe_filename(file_target, "QQ 文件")
+        self._openable = attachment_qurl(file_target) is not None
+        self.setFixedHeight(64)
+        if self._openable:
+            self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("""
             #FileBox {
-                background-color: #f7f7f7;
-                border-radius: 6px;
-                border: 1px solid #e5e5e5;
+                background-color: #f8fafc;
+                border-radius: 10px;
+                border: 1px solid #dfe5ec;
             }
             #FileBox:hover {
                 background-color: #f0f6ff;
@@ -72,31 +93,41 @@ class FilePreview(QFrame):
         """)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 5, 15, 5)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.setSpacing(12)
         self.setObjectName("FileBox")
 
         # 图标逻辑
         self.icon_label = QLabel()
         if icon_path and os.path.exists(icon_path):
             self.icon_label.setPixmap(
-                QPixmap(icon_path).scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                QPixmap(icon_path).scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             )
         else:
-            self.icon_label.setText("📄")
-            self.icon_label.setStyleSheet("font-size: 18px; color: #202020;")
+            self.icon_label.hide()
+            self.icon_label = IconWidget(self)
+            self.icon_label.setIcon(FIF.DOCUMENT)
+            self.icon_label.setFixedSize(28, 28)
 
         # 文件名逻辑
-        self.file_label = QLabel(os.path.basename(file_path))
+        self.file_label = QLabel(self.file_name)
         self.file_label.setFont(QFont("Segoe UI Variable", 11))
         self.file_label.setStyleSheet("color: #202020; background: transparent;")
 
         layout.addWidget(self.icon_label)
         layout.addWidget(self.file_label)
         layout.addStretch()
+        state_label = QLabel("打开" if self._openable else "暂不可打开")
+        state_label.setStyleSheet(
+            "color: #0067c0; background: transparent;"
+            if self._openable
+            else "color: #8a8a8a; background: transparent;"
+        )
+        layout.addWidget(state_label)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(self.file_path))
+        if event.button() == Qt.LeftButton and self._openable:
+            open_attachment(self.file_target)
         super().mousePressEvent(event)
 
 
@@ -221,12 +252,12 @@ class NotifyWindow(QWidget):
         # 消息容器（动态高度）
         self.bg_widget = QWidget(self)
         self.bg_widget.setObjectName("BgWidget")
-        self.bg_widget.setFixedWidth(560)
+        self.bg_widget.setFixedWidth(600)
         self.bg_widget.setStyleSheet("""
             #BgWidget {
                 background-color: white;
-                border-radius: 8px;
-                border: 1px solid #d9d9d9;
+                border-radius: 14px;
+                border: 1px solid #dfe5ec;
             }
             #BgWidget QLabel {
                 background: transparent;
@@ -235,8 +266,8 @@ class NotifyWindow(QWidget):
         """)
 
         self.main_layout = QVBoxLayout(self.bg_widget)
-        self.main_layout.setContentsMargins(36, 32, 36, 28)
-        self.main_layout.setSpacing(16)
+        self.main_layout.setContentsMargins(36, 30, 36, 26)
+        self.main_layout.setSpacing(18)
 
         # 发送人
         label_sender = QLabel(f"{self.data.get('Sender', '系统通知')}")
@@ -259,12 +290,11 @@ class NotifyWindow(QWidget):
         self.main_layout.addWidget(label_msg)
 
         # 文件预览
-        file_path = self.data.get("file")
-        if file_path and os.path.exists(file_path):
-            self.file_preview = FilePreview(file_path, self.data.get("icon_file"))
+        file_target = self.data.get("file_target") or self.data.get("file")
+        file_name = self.data.get("file_name", "")
+        if file_target or file_name:
+            self.file_preview = FilePreview(file_target, file_name, self.data.get("icon_file"))
             self.main_layout.addWidget(self.file_preview)
-        elif file_path:
-            logger.warning("附件路径未找到: {}", file_path)
 
         # 缩略图预览
         pic_path = self.data.get("Pic_Path")
@@ -324,6 +354,8 @@ class NotifyWindow(QWidget):
             else:
                 icon = self._tinted_icon(icon_path, QColor(0, 0, 0))
             btn.setIcon(icon)
+        else:
+            btn.setIcon(FIF.ACCEPT_MEDIUM if primary else FIF.CLOSE)
         btn.setFixedHeight(40)
         btn.setMinimumWidth(160)
         return btn
@@ -442,13 +474,14 @@ class NotifyWindow(QWidget):
 
     def on_ok(self):
         logger.info("用户点击了确认: {}", self.data.get("Sender"))
+        file_target = self.data.get("file_target") or self.data.get("file")
+        if file_target:
+            open_attachment(file_target)
         self.close_animation()
 
     def _play_sound(self):
         try:
-            if self.data.get("Calling"):
-                sound_file = self.settings.sound_important
-            elif self.data.get("Priority") == 0:
+            if self.data.get("Calling") or self.data.get("Priority") == 0:
                 sound_file = self.settings.sound_important
             else:
                 sound_file = self.settings.sound_normal

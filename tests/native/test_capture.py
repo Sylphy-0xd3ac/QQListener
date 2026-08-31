@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from src.native.capture import (
     RecvCapture,
     _is_main_qq_process,
+    control_pipe_name,
     enumerate_qq_pids,
     recv_pipe_name,
 )
@@ -14,6 +15,7 @@ from src.native.pipe_transport import FakeTransport
 
 def test_recv_pipe_name():
     assert recv_pipe_name(4321) == r"\\.\pipe\mojo.4321.recv"
+    assert control_pipe_name(4321) == r"\\.\pipe\mojo.4321.control"
 
 
 def test_main_qq_process_filter_skips_electron_children():
@@ -48,3 +50,19 @@ def test_recv_capture_emits_decoded_message():
     cap = RecvCapture(pid=1, on_message=got.append, transport_factory=lambda name: transport)
     asyncio.run(asyncio.wait_for(cap.run(), timeout=2.0))
     assert got == []  # 非消息 cmd 不产出
+
+
+def test_recv_capture_reports_pipe_connection_lifecycle():
+    transport = FakeTransport([encode_frame(PipeOp.hello)])
+    lifecycle = []
+    cap = RecvCapture(
+        pid=1,
+        on_message=lambda _msg: None,
+        transport_factory=lambda _name: transport,
+        on_connected=lambda: lifecycle.append("connected"),
+        on_disconnected=lambda: lifecycle.append("disconnected"),
+    )
+
+    asyncio.run(asyncio.wait_for(cap.run(), timeout=2.0))
+
+    assert lifecycle == ["connected", "disconnected"]

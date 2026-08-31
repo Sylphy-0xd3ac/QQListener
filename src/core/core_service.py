@@ -17,6 +17,11 @@ from src.core.core_controller import (
     get_core_state,
     remove_core_state_listener,
 )
+from src.core.core_runtime import (
+    CoreRuntimeState,
+    get_core_runtime,
+    set_core_runtime,
+)
 from src.native.binary_locator import find_hook_binary, missing_binary_help
 from src.native.capture import enumerate_qq_pids
 from src.native.injector import MapHandle, inject, unload
@@ -75,6 +80,7 @@ class CoreService:
     def start(self) -> None:
         if not self._supported:
             logger.debug("当前平台不支持核心装载器")
+            set_core_runtime(CoreRuntimeState.UNSUPPORTED, "当前平台不支持核心注入")
             return
         if self._thread is not None and self._thread.is_alive():
             return
@@ -114,6 +120,7 @@ class CoreService:
                 self.reconcile()
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
+                set_core_runtime(CoreRuntimeState.ERROR, error)
                 if error != self._last_error:
                     logger.error("核心生命周期同步失败: {}", error)
                     self._last_error = error
@@ -140,13 +147,26 @@ class CoreService:
             self._unload_all(current_pids)
             with self._lock:
                 self._external_pids.clear()
+            set_core_runtime(CoreRuntimeState.DETACHED, "核心已卸载")
             return
         if target_state == CoreState.PAUSED:
+            set_core_runtime(CoreRuntimeState.PAUSED, "监听已暂停，核心仍保留在 QQ 中")
             return
+
+        if not current_pids:
+            set_core_runtime(CoreRuntimeState.NO_QQ, "未找到正在运行的 QQ 主进程")
+            return
+
+        runtime = get_core_runtime()
+        connected_runtime = (
+            runtime.state == CoreRuntimeState.CONNECTED and runtime.pid in current_pids
+        )
 
         with self._lock:
             candidates = sorted(current_pids - set(self._handles) - self._external_pids)
         if not candidates:
+            if not connected_runtime:
+                set_core_runtime(CoreRuntimeState.WAITING, "核心已映射，等待接收管道")
             return
 
         needs_injection: list[int] = []
@@ -158,6 +178,8 @@ class CoreService:
             else:
                 needs_injection.append(pid)
         if not needs_injection:
+            if not connected_runtime:
+                set_core_runtime(CoreRuntimeState.WAITING, "已发现核心，等待接收管道")
             return
 
         dll_path = self._find_binary()
@@ -168,11 +190,13 @@ class CoreService:
             with self._lock:
                 self._handles[pid] = handle
             logger.info(
-                "核心已装载: pid={} base=0x{:x} size={}",
+                "核心映像已映射，等待接收管道: pid={} base=0x{:x} size={}",
                 pid,
                 handle.base,
                 handle.size,
             )
+            if not connected_runtime:
+                set_core_runtime(CoreRuntimeState.WAITING, "核心已映射，等待接收管道", pid)
 
     def _unload_all(self, current_pids: set[int]) -> None:
         with self._lock:

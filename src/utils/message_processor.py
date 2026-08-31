@@ -10,7 +10,32 @@ class MessageProcessor:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.seen: dict[str, float] = {}
-        self.active_toasts: set[str] = set()
+
+    @staticmethod
+    def _id_set(values: object) -> set[str]:
+        if not isinstance(values, list):
+            return set()
+        return {str(value).strip() for value in values if str(value).strip()}
+
+    def _is_blacklisted(self, msg: CapturedMessage) -> bool:
+        if not self.settings.blacklist_enabled:
+            return False
+        person_ids = self._id_set(self.settings.blacklist_person_qqs)
+        if msg.sender_id in person_ids:
+            return True
+        if msg.scene == "group":
+            return msg.peer_id in self._id_set(self.settings.blacklist_groups)
+        return msg.peer_id in person_ids
+
+    def _is_whitelisted(self, msg: CapturedMessage) -> bool:
+        if not self.settings.whitelist_enabled:
+            return True
+        person_ids = self._id_set(self.settings.whitelist_person_qqs)
+        if msg.sender_id in person_ids:
+            return True
+        if msg.scene == "group":
+            return msg.peer_id in self._id_set(self.settings.whitelist_groups)
+        return msg.peer_id in person_ids
 
     def _captured_sender_label(self, msg: CapturedMessage) -> str:
         sender = msg.sender_name or msg.sender_id
@@ -41,26 +66,15 @@ class MessageProcessor:
         sender_label = self._captured_sender_label(msg)
         key = hashlib.md5(f"{sender_label}|{body}|{msg.raw_seq}".encode()).hexdigest()
         now = time.time()
-        if key in self.active_toasts:
+        dedupe_window = max(float(self.settings.cooldown), 1.0)
+        if key in self.seen and now - self.seen[key] < dedupe_window:
             return None
-        if key in self.seen and now - self.seen[key] < self.settings.cooldown:
+
+        if self._is_blacklisted(msg) or not self._is_whitelisted(msg):
             return None
 
         self.seen[key] = now
-        self.active_toasts.add(key)
-
         combined = f"{sender_label}\n{body}"
-        blacklist = self.settings.blacklist
-        if blacklist and isinstance(blacklist, list) and any(k in combined for k in blacklist if k):
-            return None
-
-        whitelist = self.settings.whitelist
-        if (
-            whitelist
-            and isinstance(whitelist, list)
-            and not any(k in combined for k in whitelist if k)
-        ):
-            return None
 
         important = False
         calling = False
@@ -71,13 +85,9 @@ class MessageProcessor:
             important = True
             calling = True
         else:
-            important_persons = self.settings.important_persons
+            important_persons = self._id_set(self.settings.important_person_qqs)
             important_keywords = self.settings.important_keywords
-            is_important_person = (
-                important_persons
-                and isinstance(important_persons, list)
-                and any(p in sender_label for p in important_persons if p)
-            )
+            is_important_person = msg.sender_id in important_persons
             is_important_keyword = (
                 important_keywords
                 and isinstance(important_keywords, list)
@@ -99,9 +109,12 @@ class MessageProcessor:
         if image_path:
             notify_data["Pic_Path"] = image_path
         if file_path:
-            notify_data["file"] = file_path
-            file_seg = next((s for s in msg.segments if s.type == "file"), None)
-            icon_ref = file_seg.name if file_seg and file_seg.name else file_path
+            notify_data["file_target"] = file_path
+        file_seg = next((s for s in msg.segments if s.type == "file"), None)
+        if file_seg is not None:
+            notify_data["file_name"] = file_seg.name or "QQ 文件"
+            if not notify_data.get("file_target") and file_seg.url:
+                notify_data["file_target"] = file_seg.url
+            icon_ref = file_seg.name or file_path or ""
             notify_data["icon_file"] = file_icon_for_path(icon_ref)
         return notify_data
-

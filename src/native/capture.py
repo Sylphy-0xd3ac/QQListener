@@ -29,16 +29,24 @@ def recv_pipe_name(pid: int) -> str:
     return rf"\\.\pipe\mojo.{pid}.recv"
 
 
+def control_pipe_name(pid: int) -> str:
+    return rf"\\.\pipe\mojo.{pid}.control"
+
+
 class RecvCapture:
     def __init__(
         self,
         pid: int,
         on_message: Callable[[CapturedMessage], None],
         transport_factory: Callable[[str], object] = Win32NamedPipeTransport,
+        on_connected: Callable[[], None] | None = None,
+        on_disconnected: Callable[[], None] | None = None,
     ) -> None:
         self._pid = pid
         self._on_message = on_message
         self._transport_factory = transport_factory
+        self._on_connected = on_connected
+        self._on_disconnected = on_disconnected
         self._client: RecvHookClient | None = None
 
     def stop(self) -> None:
@@ -48,10 +56,17 @@ class RecvCapture:
     async def run(self) -> None:
         transport = self._transport_factory(recv_pipe_name(self._pid))
         self._client = RecvHookClient(transport)
+        if self._on_connected is not None:
+            self._on_connected()
 
         def handle(packet):
             msg = decode_message_push(packet)
             if msg is not None:
+                msg.source_pid = self._pid
                 self._on_message(msg)
 
-        await self._client.run(on_packet=handle)
+        try:
+            await self._client.run(on_packet=handle)
+        finally:
+            if self._on_disconnected is not None:
+                self._on_disconnected()

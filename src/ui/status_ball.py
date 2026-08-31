@@ -7,6 +7,7 @@ from src.core.core_controller import (
     remove_core_state_listener,
     toggle_core,
 )
+from src.core.core_runtime import CoreRuntimeState, get_core_runtime
 from src.core.resources import app_icon_path, app_icon_png_path
 from src.ui.qt_compat import (
     QColor,
@@ -18,8 +19,8 @@ from src.ui.qt_compat import (
     QRectF,
     Qt,
     QTimer,
-    Signal,
     QWidget,
+    Signal,
     event_global_position,
     load_icon,
     screen_at,
@@ -56,12 +57,13 @@ class FloatingStatusBall(QWidget):
         self._long_press_timer = QTimer(self)
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(self._trigger_long_press)
+        self._runtime_timer = QTimer(self)
+        self._runtime_timer.timeout.connect(self.refresh_state)
+        self._runtime_timer.start(500)
 
         self._state_listener = self._on_core_state_changed
         add_core_state_listener(self._state_listener)
-        self.destroyed.connect(
-            lambda *_args: remove_core_state_listener(self._state_listener)
-        )
+        self.destroyed.connect(lambda *_args: remove_core_state_listener(self._state_listener))
 
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.refresh_state()
@@ -85,7 +87,7 @@ class FloatingStatusBall(QWidget):
 
         base = QRectF(4, 4, self.width() - 8, self.height() - 8)
         painter.setBrush(QColor(255, 255, 255))
-        painter.setPen(QPen(QColor(214, 220, 230), 1))
+        painter.setPen(QPen(self._runtime_ring_color(), 2.5))
         painter.drawEllipse(base)
 
         self._draw_logo(painter)
@@ -152,8 +154,35 @@ class FloatingStatusBall(QWidget):
     }
 
     def refresh_state(self):
-        self.setToolTip(self._STATE_TOOLTIP.get(get_core_state(), "QQListener"))
+        state = get_core_state()
+        if state == CoreState.RUNNING:
+            snapshot = get_core_runtime()
+            tooltip = {
+                CoreRuntimeState.CONNECTED: "接收管道已连接（单击暂停，长按卸载）",
+                CoreRuntimeState.WAITING: "正在等待接收管道（单击暂停，长按卸载）",
+                CoreRuntimeState.NO_QQ: "未找到 QQ 主进程（单击暂停，长按卸载）",
+                CoreRuntimeState.ERROR: "核心运行异常（单击暂停，长按卸载）",
+                CoreRuntimeState.UNSUPPORTED: "当前平台不支持核心注入",
+            }.get(snapshot.state, snapshot.detail or "QQListener")
+        else:
+            tooltip = self._STATE_TOOLTIP.get(state, "QQListener")
+        self.setToolTip(tooltip)
         self.update()
+
+    def _runtime_ring_color(self) -> QColor:
+        state = get_core_state()
+        if state == CoreState.PAUSED:
+            return QColor(217, 119, 6)
+        if state == CoreState.DETACHED:
+            return QColor(148, 163, 184)
+        runtime_state = get_core_runtime().state
+        if runtime_state == CoreRuntimeState.CONNECTED:
+            return QColor(0, 153, 153)
+        if runtime_state == CoreRuntimeState.ERROR:
+            return QColor(196, 43, 28)
+        if runtime_state in {CoreRuntimeState.WAITING, CoreRuntimeState.NO_QQ}:
+            return QColor(217, 119, 6)
+        return QColor(148, 163, 184)
 
     def _on_core_state_changed(self, _state: CoreState):
         self.refresh_state()

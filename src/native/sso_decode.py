@@ -1,61 +1,119 @@
 from src.native.hqp1 import RecvPacket
 from src.native.model import CapturedMessage
-from src.native.proto.message import parse_elems
-from src.native.proto.wire import as_bytes, as_int, decode_fields
+from src.native.proto.message import parse_message_body
+from src.native.proto.wire import as_bytes, as_int, as_str, decode_fields
 
 MESSAGE_PUSH_CMDS: set[str] = {
     "trpc.msg.olpush.OlPushService.MsgPush",
 }
 
-# —— PushMsg 外层字段号：占位，Phase 0 真帧校准（Task 6 Step 5） ——
-_F_MSG = 1  # PushMsg.message
-_F_ROUTING = 2  # message.routingHead（群号/好友号）
-_F_CONTENT = 3  # message.contentHead（seq 等）
-_F_BODY = 4  # message.messageBody
-_F_RICHTEXT = 1  # messageBody.richText
-_F_GROUP = 1  # routingHead.group -> groupCode
-_F_SENDER_UIN = 1  # 发送者 uin
+# PushMsg / PushMsgBody（已由真实 NTQQ OlPush 帧校准）。
+_F_MESSAGE = 1
+_F_RESPONSE_HEAD = 1
+_F_CONTENT_HEAD = 2
+_F_BODY = 3
+
+# ResponseHead
+_F_FROM_UIN = 1
+_F_FROM_UID = 2
+_F_TO_UIN = 5
+_F_TO_UID = 6
+_F_FORWARD = 7
+_F_GROUP = 8
+
+# ResponseForward / ResponseGrp
+_F_FRIEND_NAME = 6
+_F_GROUP_UIN = 1
+_F_MEMBER_NAME = 2
+_F_MEMBER_CARD = 4
+_F_GROUP_NAME = 7
+
+# ContentHead
+_F_MSG_TYPE = 1
+_F_SEQUENCE = 5
+_F_NT_MSG_SEQUENCE = 11
+
+
+def _first(fields, field_no):
+    values = fields.get(field_no)
+    return values[0] if values else None
+
+
+def _field_bytes(fields, field_no: int) -> bytes:
+    value = _first(fields, field_no)
+    return as_bytes(value) if value is not None else b""
+
+
+def _field_int(fields, field_no: int) -> int:
+    value = _first(fields, field_no)
+    return as_int(value) if value is not None else 0
+
+
+def _field_str(fields, field_no: int) -> str:
+    value = _first(fields, field_no)
+    return as_str(value) if value is not None else ""
 
 
 def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
     if packet.cmd not in MESSAGE_PUSH_CMDS:
         return None
     top = decode_fields(packet.body)
-    msg_f = top.get(_F_MSG)
-    if not msg_f:
+    message_data = _field_bytes(top, _F_MESSAGE)
+    if not message_data:
         return None
-    message = decode_fields(as_bytes(msg_f[0]))
-    body_f = message.get(_F_BODY)
-    if not body_f:
+    message = decode_fields(message_data)
+    body_data = _field_bytes(message, _F_BODY)
+    if not body_data:
         return None
-    body = decode_fields(as_bytes(body_f[0]))
-    rich_f = body.get(_F_RICHTEXT)
-    segments = parse_elems(as_bytes(rich_f[0])) if rich_f else []
 
-    # peer / sender（占位路径；真帧校准后替换字段号）
-    peer_id = ""
-    sender_id = packet.uin
-    routing_f = message.get(_F_ROUTING)
-    if routing_f:
-        routing = decode_fields(as_bytes(routing_f[0]))
-        grp = routing.get(_F_GROUP)
-        if grp:
-            peer_id = str(as_int(grp[0]))
+    response_data = _field_bytes(message, _F_RESPONSE_HEAD)
+    content_data = _field_bytes(message, _F_CONTENT_HEAD)
+    response = decode_fields(response_data) if response_data else {}
+    content = decode_fields(content_data) if content_data else {}
 
-    raw_seq = 0
-    content_f = message.get(_F_CONTENT)
-    if content_f:
-        content = decode_fields(as_bytes(content_f[0]))
-        seq_f = content.get(_F_SENDER_UIN)
-        if seq_f:
-            raw_seq = as_int(seq_f[0])
+    from_uin = _field_int(response, _F_FROM_UIN)
+    from_uid = _field_str(response, _F_FROM_UID)
+    to_uin = _field_int(response, _F_TO_UIN)
+    to_uid = _field_str(response, _F_TO_UID)
+
+    group_data = _field_bytes(response, _F_GROUP)
+    group = decode_fields(group_data) if group_data else {}
+    group_uin = _field_int(group, _F_GROUP_UIN)
+    msg_type = _field_int(content, _F_MSG_TYPE)
+    is_group = bool(group_uin) or msg_type == 82
+    segments = parse_message_body(body_data, is_group=is_group)
+
+    sender_id = str(from_uin) if from_uin else from_uid
+    sender_name = ""
+    peer_name = ""
+    account_uid = ""
+    if is_group:
+        peer_id = str(group_uin) if group_uin else ""
+        peer_name = _field_str(group, _F_GROUP_NAME)
+        sender_name = _field_str(group, _F_MEMBER_NAME) or _field_str(group, _F_MEMBER_CARD)
+    else:
+        try:
+            self_uin = int(packet.uin)
+        except (TypeError, ValueError):
+            self_uin = 0
+        peer_uin = to_uin if self_uin and from_uin == self_uin else from_uin
+        peer_id = str(peer_uin) if peer_uin else from_uid
+        account_uid = from_uid if self_uin and from_uin == self_uin else to_uid
+        forward_data = _field_bytes(response, _F_FORWARD)
+        if forward_data:
+            sender_name = _field_str(decode_fields(forward_data), _F_FRIEND_NAME)
+
+    sequence = _field_int(content, _F_SEQUENCE)
+    nt_sequence = _field_int(content, _F_NT_MSG_SEQUENCE)
+    raw_seq = sequence if is_group else nt_sequence or sequence
 
     return CapturedMessage(
-        scene="group" if peer_id else "c2c",
+        scene="group" if is_group else "c2c",
         peer_id=peer_id,
-        peer_name="",
+        peer_name=peer_name,
         sender_id=sender_id,
-        sender_name="",
+        sender_name=sender_name,
         segments=segments,
         raw_seq=raw_seq or packet.seq,
+        account_uid=account_uid,
     )

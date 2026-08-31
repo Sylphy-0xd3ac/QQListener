@@ -217,7 +217,7 @@ class QQListenerApp:
         sys.exit(exit_code)
 
     def _maybe_run_core_setup(self):
-        """受支持平台首次运行：要求阅读同意 SnowLuma 条款并安装内核。"""
+        """受支持平台首次运行：要求阅读同意 SnowLuma 条款并安装核心。"""
         from src.core.core_updater import needs_core_setup
 
         if not needs_core_setup(self.settings):
@@ -228,7 +228,7 @@ class QQListenerApp:
             dialog = CoreSetupDialog(self.settings, parent=self.settings_window)
             dialog.exec()
         except Exception:
-            logger.exception("内核安装向导失败")
+            logger.exception("核心安装向导失败")
 
     def show_settings(self):
         try:

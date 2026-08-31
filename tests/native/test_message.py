@@ -3,6 +3,7 @@ from src.native.proto.message import (
     ELEM_GROUP_FILE,
     ELEM_NOT_ONLINE_IMAGE,
     ELEM_TEXT,
+    ELEM_TRANS,
     RICHTEXT_ELEMS,
     parse_elems,
 )
@@ -55,3 +56,27 @@ def test_parse_elems_group_file():
     assert segs[0].name == "作业.docx"
     assert segs[0].extra["size"] == 2048
     assert segs[0].extra["file_id"] == "fid"
+
+
+def test_parse_elems_nt_group_file_trans_elem():
+    info = (
+        _varint_field(1, 102)
+        + _len_field(2, b"group-file-id")
+        + _varint_field(3, 4096)
+        + _len_field(4, "群资料.pdf".encode())
+    )
+    extra = _varint_field(1, 6) + _len_field(7, _len_field(2, info))
+    value = b"\x01" + len(extra).to_bytes(2, "big") + extra
+    trans = _varint_field(1, 24) + _len_field(2, value)
+    rich = _len_field(RICHTEXT_ELEMS, _len_field(ELEM_TRANS, trans))
+
+    segs = parse_elems(rich, is_group=True)
+
+    assert [s.type for s in segs] == ["file"]
+    assert segs[0].name == "群资料.pdf"
+    assert segs[0].extra == {
+        "bus_id": 102,
+        "size": 4096,
+        "file_id": "group-file-id",
+        "sha1": "",
+    }

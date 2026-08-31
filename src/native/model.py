@@ -21,6 +21,8 @@ class CapturedMessage:
     sender_name: str
     segments: list[Segment]
     raw_seq: int
+    account_uid: str = ""
+    source_pid: int = 0
 
 
 def message_text(msg: "CapturedMessage") -> str:

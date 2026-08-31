@@ -5,9 +5,11 @@ import aiohttp
 from loguru import logger
 
 from src.core.core_controller import CoreState, get_core_state
+from src.core.core_runtime import CoreRuntimeState, set_core_runtime
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.native.capture import RecvCapture, enumerate_qq_pids
+from src.native.file_resolver import resolve_file_url
 from src.native.model import CapturedMessage
 from src.ui.qt_compat import QThread, Signal
 from src.utils.media import download_url
@@ -58,20 +60,43 @@ class NotificationWorker(QThread):
 
             pids = enumerate_qq_pids()
             if not pids:
+                set_core_runtime(CoreRuntimeState.NO_QQ, "未找到正在运行的 QQ 主进程")
                 await asyncio.sleep(_NO_QQ_BACKOFF_S)
                 continue
 
-            cap = RecvCapture(pids[0], self._on_captured)
+            pid = pids[0]
+            cap = RecvCapture(
+                pid,
+                self._on_captured,
+                on_connected=lambda pid=pid: self._on_capture_connected(pid),
+                on_disconnected=lambda pid=pid: self._on_capture_disconnected(pid),
+            )
             watcher = asyncio.create_task(self._watch_core_state(cap))
             try:
                 await cap.run()
             except Exception:
                 logger.debug("原生捕获中断（QQ 未注入/管道不可用）", exc_info=True)
+                if get_core_state() == CoreState.RUNNING:
+                    set_core_runtime(
+                        CoreRuntimeState.WAITING,
+                        "核心尚未提供接收管道，正在重试",
+                        pid,
+                    )
                 await asyncio.sleep(_ERROR_BACKOFF_S)
             finally:
                 watcher.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await watcher
+
+    @staticmethod
+    def _on_capture_connected(pid: int) -> None:
+        logger.info("接收管道已连接: pid={}", pid)
+        set_core_runtime(CoreRuntimeState.CONNECTED, "接收管道已连接，正在监听消息", pid)
+
+    @staticmethod
+    def _on_capture_disconnected(pid: int) -> None:
+        if get_core_state() == CoreState.RUNNING:
+            set_core_runtime(CoreRuntimeState.WAITING, "接收管道已断开，正在重连", pid)
 
     async def _watch_core_state(self, cap: RecvCapture):
         """核心离开 RUNNING（暂停/卸载）或线程停止时，停掉当前捕获会话。"""
@@ -87,24 +112,22 @@ class NotificationWorker(QThread):
 
     async def _handle_captured(self, msg: CapturedMessage):
         image_path = None
-        file_path = None
         image_seg = next((s for s in msg.segments if s.type == "image" and s.url), None)
-        # 群文件推送里不带 URL（需 OIDB 换地址）；仅当 segment 已带 url 时才下载。
-        file_seg = next((s for s in msg.segments if s.type == "file" and s.url), None)
-        if image_seg is not None or file_seg is not None:
+        file_seg = next((s for s in msg.segments if s.type == "file"), None)
+        if file_seg is not None and not file_seg.url:
+            try:
+                file_seg.url = await resolve_file_url(msg, file_seg)
+            except Exception:
+                logger.debug("文件下载地址解析失败", exc_info=True)
+
+        if image_seg is not None:
             try:
                 async with aiohttp.ClientSession() as session:
-                    if image_seg is not None and self.settings.auto_show_thumb:
+                    if self.settings.auto_show_thumb:
                         image_path = await download_url(session, image_seg.url, "image")
-                    if file_seg is not None:
-                        file_path = await download_url(
-                            session, file_seg.url, "file", filename=file_seg.name or None
-                        )
             except Exception:
                 logger.debug("附件下载失败", exc_info=True)
 
-        data = self.processor.process_captured(
-            msg, image_path=image_path, file_path=file_path
-        )
+        data = self.processor.process_captured(msg, image_path=image_path)
         if data:
             self.notification_ready.emit(data)
