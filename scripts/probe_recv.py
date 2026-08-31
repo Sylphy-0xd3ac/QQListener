@@ -1,7 +1,7 @@
 """Phase 0 探针：连 QQ 的 SnowLuma recv 命名管道，转储帧。
 
-前置：QQ 已运行，且已用 SnowLuma 的 .node 注入器把 .dll 塞进该 QQ 进程
-（本脚本不做注入）。用法：python scripts/probe_recv.py <pid> [--dump-dir DIR]
+前置：QQ 已运行，且核心已由 QQListener 的 Python 装载器装入该 QQ 主进程
+（本脚本只读管道，不负责装载）。用法：python scripts/probe_recv.py <pid> [--dump-dir DIR]
 """
 
 import sys

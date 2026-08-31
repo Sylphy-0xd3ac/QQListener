@@ -1,8 +1,7 @@
-import pathlib
-
-Path = pathlib.Path
+import contextlib
 import sys
 import tempfile
+from pathlib import Path
 
 import src.utils.filtered_print
 
@@ -12,6 +11,7 @@ with src.utils.filtered_print.filtered_print():
 from loguru import logger
 
 from src.core.core_controller import is_core_running, unload_core
+from src.core.core_service import CoreService
 from src.core.logging import setup_logging
 from src.core.resources import app_icon_path, app_icon_png_path
 from src.core.settings import get_settings
@@ -41,6 +41,7 @@ class QQListenerApp:
         self.settings = get_settings()
         self.signals = get_signals()
         self.worker: NotificationWorker | None = None
+        self.core_service: CoreService | None = None
         self.settings_window: SettingsWindow | None = None
         self.tray_icon: TrayIcon | None = None
         self.status_ball: FloatingStatusBall | None = None
@@ -207,6 +208,8 @@ class QQListenerApp:
             )
             self.show_settings()
         self._maybe_run_core_setup()
+        self.core_service = CoreService()
+        self.core_service.start()
         if self.worker:
             self.worker.start()
         exit_code = self.app.exec() if self.app else 1
@@ -287,10 +290,8 @@ class QQListenerApp:
     def _restart_worker(self):
         old_worker = self.worker
         if old_worker:
-            try:
+            with contextlib.suppress(RuntimeError):
                 old_worker.notification_ready.disconnect(self._on_notification_ready)
-            except RuntimeError:
-                pass
 
             stopped = old_worker.stop()
             if stopped:
@@ -332,6 +333,9 @@ class QQListenerApp:
         self.notify_manager.close_all_notifications()
         if self.worker and self.worker.isRunning():
             self.worker.stop()
+        if self.core_service:
+            self.core_service.stop(unload_owned=True)
+            self.core_service = None
 
         if self.tray_icon:
             self.tray_icon.destroy()

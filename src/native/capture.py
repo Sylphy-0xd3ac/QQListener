@@ -6,15 +6,23 @@ from src.native.pipe_transport import Win32NamedPipeTransport
 from src.native.sso_decode import decode_message_push
 
 
+def _is_main_qq_process(name: str, cmdline: list[str] | None) -> bool:
+    """Electron 子进程都带 ``--type``；只允许命令行可读的 QQ 主进程。"""
+    if name.lower() != "qq.exe" or not cmdline:
+        return False
+    return not any(arg == "--type" or arg.startswith("--type=") for arg in cmdline[1:])
+
+
 def enumerate_qq_pids() -> list[int]:
     import psutil
 
     pids: list[int] = []
-    for proc in psutil.process_iter(["name"]):
+    for proc in psutil.process_iter(["name", "cmdline"], ad_value=None):
         name = proc.info.get("name") or ""
-        if name.lower() == "qq.exe":
+        cmdline = proc.info.get("cmdline")
+        if _is_main_qq_process(name, cmdline):
             pids.append(proc.pid)
-    return pids
+    return sorted(pids)
 
 
 def recv_pipe_name(pid: int) -> str:

@@ -6,7 +6,6 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "QQListener"
 UI_INIT_PATH = PROJECT_ROOT / "src" / "ui" / "__init__.py"
@@ -119,6 +118,7 @@ def build_command(name: str, qt_api: str) -> list[str]:
             command,
             [
                 "comtypes",
+                "pefile",
                 "pycaw.pycaw",
                 "uiautomation",
                 "winsdk.windows.ui.notifications",
