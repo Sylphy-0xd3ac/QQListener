@@ -146,7 +146,7 @@ def test_remote_tls_callbacks_are_recovered_from_mapped_headers():
     image[0x80:0x84] = b"PE\0\0"
     optional_header = 0x80 + 24
     struct.pack_into("<H", image, optional_header, injector.IMAGE_NT_OPTIONAL_HDR64_MAGIC)
-    tls_entry = optional_header + 112 + injector.IMAGE_DIRECTORY_ENTRY_TLS * 16
+    tls_entry = optional_header + 112 + injector.IMAGE_DIRECTORY_ENTRY_TLS * 8
     struct.pack_into("<II", image, tls_entry, 0x1000, 40)
     struct.pack_into("<Q", image, 0x1000 + 24, base + 0x1100)
     struct.pack_into("<QQ", image, 0x1100, base + 0x1200, 0)

@@ -1,3 +1,5 @@
+import pytest
+
 from src.core import core_updater as cu
 
 
@@ -40,6 +42,41 @@ def test_needs_core_setup_gated_by_platform(monkeypatch):
     # 支持 + 已接受但内核缺失：需要
     monkeypatch.setattr(cu, "is_core_installed", lambda: False)
     assert cu.needs_core_setup(s) is True
+
+
+def test_https_context_uses_windows_native_truststore(monkeypatch):
+    context = object()
+    protocols = []
+
+    class FakeTruststore:
+        @staticmethod
+        def SSLContext(protocol):
+            protocols.append(protocol)
+            return context
+
+    cu._https_context.cache_clear()
+    monkeypatch.setattr(cu.sys, "platform", "win32")
+    monkeypatch.setattr(cu, "truststore", FakeTruststore)
+
+    assert cu._https_context() is context
+    assert protocols == [cu.ssl.PROTOCOL_TLS_CLIENT]
+    cu._https_context.cache_clear()
+
+
+def test_urlopen_explains_certificate_failure(monkeypatch):
+    context = object()
+
+    def fail(_target, **kwargs):
+        assert kwargs["context"] is context
+        raise cu.urllib.error.URLError(
+            cu.ssl.SSLCertVerificationError(1, "unable to get local issuer certificate")
+        )
+
+    monkeypatch.setattr(cu, "_https_context", lambda: context)
+    monkeypatch.setattr(cu.urllib.request, "urlopen", fail)
+
+    with pytest.raises(RuntimeError, match="程序不会跳过证书校验"):
+        cu._urlopen("https://example.test", timeout=15)
 
 
 def test_is_newer():

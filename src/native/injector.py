@@ -692,9 +692,9 @@ def _remote_tls_callbacks(process: _WindowsProcess, handle: MapHandle) -> tuple[
     if magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC:
         raise InjectionError("远程映像不是 PE32+ x64")
 
-    # PE32+ OptionalHeader 的数据目录从偏移 112 开始，每项 16 字节。
-    tls_entry = optional_header + 112 + IMAGE_DIRECTORY_ENTRY_TLS * 16
-    _checked_range(tls_entry, 16, handle.size, "远程 TLS 数据目录")
+    # PE32+ OptionalHeader 的数据目录从偏移 112 开始，每项 8 字节。
+    tls_entry = optional_header + 112 + IMAGE_DIRECTORY_ENTRY_TLS * 8
+    _checked_range(tls_entry, 8, handle.size, "远程 TLS 数据目录")
     tls_rva, tls_size = struct.unpack("<II", process.read(handle.base + tls_entry, 8))
     if tls_rva == 0 or tls_size == 0:
         return ()
