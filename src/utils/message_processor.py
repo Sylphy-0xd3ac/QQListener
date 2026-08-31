@@ -1,10 +1,9 @@
 import hashlib
-import os
 import time
 
-from loguru import logger
-
 from src.core.settings import get_settings
+from src.native.model import CapturedMessage, message_text
+from src.utils.media import file_icon_for_path
 
 
 class MessageProcessor:
@@ -12,40 +11,54 @@ class MessageProcessor:
         self.settings = get_settings()
         self.seen: dict[str, float] = {}
         self.active_toasts: set[str] = set()
-        self.last_file_mtime: dict[str, float] = {}
 
-    def process_notification(self, texts: list[str]) -> dict | None:
-        if not texts or not isinstance(texts, list):
+    def _captured_sender_label(self, msg: CapturedMessage) -> str:
+        sender = msg.sender_name or msg.sender_id
+        if msg.scene == "group":
+            peer = msg.peer_name or msg.peer_id
+            return f"{peer}·{sender}" if peer else sender
+        return sender
+
+    def _captured_mentions_me(self, msg: CapturedMessage) -> bool:
+        user_qq = str(self.settings.get("User_QQ", "") or "").strip()
+        for seg in msg.segments:
+            if seg.type != "at":
+                continue
+            if seg.target_id == "all" or (user_qq and seg.target_id == user_qq):
+                return True
+        return False
+
+    def process_captured(
+        self,
+        msg: CapturedMessage,
+        image_path: str | None = None,
+        file_path: str | None = None,
+    ) -> dict | None:
+        body = message_text(msg)
+        if not body and not image_path and not file_path:
             return None
 
-        norm = [" ".join(t.split()) for t in texts if t and isinstance(t, str)]
-        if not norm:
-            return None
-
-        key = hashlib.md5("|".join(norm).encode("utf-8")).hexdigest()
+        sender_label = self._captured_sender_label(msg)
+        key = hashlib.md5(f"{sender_label}|{body}|{msg.raw_seq}".encode()).hexdigest()
         now = time.time()
         if key in self.active_toasts:
             return None
-        cooldown = self.settings.cooldown
-        if key in self.seen and now - self.seen[key] < cooldown:
+        if key in self.seen and now - self.seen[key] < self.settings.cooldown:
             return None
 
         self.seen[key] = now
         self.active_toasts.add(key)
-        message_text = "\n".join(texts)
+
+        combined = f"{sender_label}\n{body}"
         blacklist = self.settings.blacklist
-        if (
-            blacklist
-            and isinstance(blacklist, list)
-            and any(k in message_text for k in blacklist if k)
-        ):
+        if blacklist and isinstance(blacklist, list) and any(k in combined for k in blacklist if k):
             return None
 
         whitelist = self.settings.whitelist
         if (
             whitelist
             and isinstance(whitelist, list)
-            and not any(k in message_text for k in whitelist if k)
+            and not any(k in combined for k in whitelist if k)
         ):
             return None
 
@@ -53,105 +66,42 @@ class MessageProcessor:
         calling = False
         duration = self.settings.duration_everyone
         calling_keyword = self.settings.calling_keyword
-        if self.settings.calling_enabled and calling_keyword and calling_keyword in message_text:
+        if self.settings.calling_enabled and calling_keyword and calling_keyword in combined:
             duration = self.settings.calling_duration
             important = True
             calling = True
         else:
-            sender = texts[0] if texts else ""
             important_persons = self.settings.important_persons
             important_keywords = self.settings.important_keywords
-
             is_important_person = (
                 important_persons
                 and isinstance(important_persons, list)
-                and any(p in sender for p in important_persons if p)
+                and any(p in sender_label for p in important_persons if p)
             )
             is_important_keyword = (
                 important_keywords
                 and isinstance(important_keywords, list)
-                and any(k in message_text for k in important_keywords if k)
+                and any(k in body for k in important_keywords if k)
             )
-            is_at_me = self.settings.someone_at_me and "有人@我" in sender
-
+            is_at_me = self.settings.someone_at_me and self._captured_mentions_me(msg)
             if is_important_person or is_important_keyword or is_at_me:
                 duration = self.settings.duration_important
                 important = True
 
-        # 构建通知数据
         notify_data = {
-            "Sender": texts[0] if texts else "系统通知",
-            "Message": "\n".join(texts[1:]) if len(texts) > 1 else "",
+            "Sender": sender_label,
+            "Message": body,
             "Duration": duration,
             "Priority": 0 if important else 1,
             "Calling": calling,
             "icon_file": "asset/pdf.png",
         }
-
-        # 处理图片
-        message = notify_data.get("Message", "")
-        if message and "[图片]" in message and self.settings.auto_show_thumb:
-            pic_path = self._find_new_thumb(timeout=self.settings.max_wait_thumb_time)
-            if pic_path:
-                notify_data["Pic_Path"] = pic_path
-
+        if image_path:
+            notify_data["Pic_Path"] = image_path
+        if file_path:
+            notify_data["file"] = file_path
+            file_seg = next((s for s in msg.segments if s.type == "file"), None)
+            icon_ref = file_seg.name if file_seg and file_seg.name else file_path
+            notify_data["icon_file"] = file_icon_for_path(icon_ref)
         return notify_data
 
-    def _find_new_thumb(self, timeout: int = 5) -> str | None:
-        """查找新的缩略图"""
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            thumb_path = self.settings.thumb_path
-            if not thumb_path or not os.path.exists(thumb_path):
-                time.sleep(0.3)
-                continue
-
-            try:
-                files = os.listdir(thumb_path)
-                if not files:
-                    time.sleep(0.3)
-                    continue
-
-                for f in files:
-                    if not f or not isinstance(f, str):
-                        continue
-                    if not f.lower().endswith((".jpg", ".png", ".webp")):
-                        continue
-
-                    full = os.path.join(thumb_path, f)
-                    if not os.path.exists(full):
-                        continue
-
-                    try:
-                        mtime = os.path.getmtime(full)
-                    except OSError:
-                        continue
-
-                    # 新文件或被修改的文件
-                    is_new_or_updated = (
-                        full not in self.last_file_mtime or self.last_file_mtime[full] != mtime
-                    )
-                    if is_new_or_updated:
-                        self.last_file_mtime[full] = mtime
-                        logger.debug("检测到新/更新缩略图: {}", full)
-                        return full
-            except OSError:
-                logger.exception("读取缩略图目录失败")
-                return None
-
-            time.sleep(0.3)
-
-        return None
-
-    def cleanup_active_toast(self, key: str) -> None:
-        """清理活跃通知记录"""
-        if key and isinstance(key, str):
-            self.active_toasts.discard(key)
-
-    def update_active_toasts(self, current_keys: set[str] | None) -> None:
-        """更新活跃通知集合"""
-        if current_keys and isinstance(current_keys, set):
-            self.active_toasts = {k for k in self.active_toasts if k in current_keys}
-        else:
-            self.active_toasts.clear()

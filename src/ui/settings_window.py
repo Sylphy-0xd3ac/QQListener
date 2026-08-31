@@ -7,7 +7,6 @@ import webbrowser
 import pygame
 from loguru import logger
 
-from src.core.resources import resource_path
 from src.ui.qt_compat import (
     QApplication,
     QColor,
@@ -16,16 +15,17 @@ from src.ui.qt_compat import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPainter,
     QRectF,
     QSize,
     QStackedWidget,
     Qt,
+    QThread,
+    QTimer,
     QTranslator,
     QVBoxLayout,
     QWidget,
-    load_icon,
+    Signal,
 )
 
 
@@ -83,13 +83,33 @@ def _patch_macos_frameless_window() -> None:
 
 _patch_macos_frameless_window()
 
+from src.core.autostart import (
+    is_auto_start_enabled,
+    is_auto_start_supported,
+    set_auto_start_enabled,
+)
+from src.core.core_controller import (
+    CoreState,
+    add_core_state_listener,
+    get_core_state,
+    remove_core_state_listener,
+    toggle_core,
+    unload_core,
+)
+from src.core.core_updater import (
+    check_update,
+    current_core_version,
+    download_and_install,
+    is_core_installed,
+)
+from src.core.settings import get_settings
+from src.core.signals import get_signals
 from src.ui.fluent_compat import (
     CaptionLabel,
     CheckBox,
     ComboBox,
     DoubleSpinBox,
     EditableComboBox,
-    FluentIcon as FIF,
     FluentWindow,
     IconInfoBadge,
     LineEdit,
@@ -104,27 +124,33 @@ from src.ui.fluent_compat import (
     SubtitleLabel,
     SwitchButton,
 )
-
-from src.core.autostart import (
-    is_auto_start_enabled,
-    is_auto_start_supported,
-    set_auto_start_enabled,
+from src.ui.fluent_compat import (
+    FluentIcon as FIF,
 )
-from src.core.notification_state import (
-    add_notification_state_listener,
-    is_notifications_muted,
-    remove_notification_state_listener,
-    toggle_notifications_muted,
-)
-from src.core.notification_engines import (
-    ENGINE_CHOICES,
-    ENGINE_ONEBOT_V11,
-    normalize_notification_engine,
-)
-from src.core.settings import get_settings
-from src.core.signals import get_signals
 from src.ui.fluent_dialog import show_fluent_message
 from src.utils.tts import set_system_volume_max
+
+
+class _CoreUpdateThread(QThread):
+    """后台执行内核检查/安装，避免阻塞 UI。"""
+
+    checked = Signal(object)  # UpdateStatus
+    installed = Signal(str)  # 已装版本
+    failed = Signal(str)
+
+    def __init__(self, mode: str, proxy: str | None = None, parent=None):
+        super().__init__(parent)
+        self._mode = mode
+        self._proxy = proxy
+
+    def run(self):
+        try:
+            if self._mode == "check":
+                self.checked.emit(check_update())
+            else:
+                self.installed.emit(download_and_install(proxy=self._proxy))
+        except Exception as exc:  # noqa: BLE001 — 面向用户的错误消息
+            self.failed.emit(str(exc))
 
 
 class SettingsWindow(FluentWindow):
@@ -146,13 +172,15 @@ class SettingsWindow(FluentWindow):
         self._debug_click_count = 0
         self._debug_page_unlocked = False
         self.init_ui()
-        self._notification_state_listener = self._on_notifications_muted_changed
-        add_notification_state_listener(self._notification_state_listener)
+        self._core_state_listener = self._on_core_state_changed
+        add_core_state_listener(self._core_state_listener)
         self.destroyed.connect(
-            lambda *_args: remove_notification_state_listener(
-                self._notification_state_listener
-            )
+            lambda *_args: remove_core_state_listener(self._core_state_listener)
         )
+        self._badge_long_press_timer = QTimer(self)
+        self._badge_long_press_timer.setSingleShot(True)
+        self._badge_long_press_timer.timeout.connect(self._on_badge_long_press)
+        self._badge_long_pressed = False
         self._polish_window_chrome()
 
     def resizeEvent(self, event):
@@ -252,7 +280,6 @@ class SettingsWindow(FluentWindow):
         layout.setSpacing(24)
         layout.addStretch()
 
-        engine_label = self._current_engine_label()
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
 
         status_row = QHBoxLayout()
@@ -260,19 +287,18 @@ class SettingsWindow(FluentWindow):
         status_row.addStretch()
 
         self.home_status_badge = None
-        self.home_status_badge_muted = None
+        self.home_status_badge_state = None
         self.home_status_badge_box = QWidget(page)
         self.home_status_badge_box.setFixedSize(44, 44)
         self.home_status_badge_box.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.home_status_badge_box.mousePressEvent = self._on_home_status_badge_pressed
+        self.home_status_badge_box.mousePressEvent = self._on_badge_pressed
+        self.home_status_badge_box.mouseReleaseEvent = self._on_badge_released
         status_row.addWidget(self.home_status_badge_box, alignment=Qt.AlignVCenter)
 
         status_text_layout = QVBoxLayout()
         status_text_layout.setSpacing(4)
         self.home_status_title = SubtitleLabel(self.tr("正在运行"))
-        self.home_status_detail = CaptionLabel(
-            self.tr("引擎: {engine}  QQ号: {qq}").format(engine=engine_label, qq=user_qq)
-        )
+        self.home_status_detail = CaptionLabel(self.tr("QQ号: {qq}").format(qq=user_qq))
         self.home_status_detail.setStyleSheet("color: #707070;")
         status_text_layout.addWidget(self.home_status_title)
         status_text_layout.addWidget(self.home_status_detail)
@@ -315,12 +341,7 @@ class SettingsWindow(FluentWindow):
         self._settings_pivot_routes = []
         for route_key, title, icon, content in [
             ("basic", self.tr("基本"), FIF.HOME, self._create_basic_tab()),
-            (
-                "engine",
-                self.tr("引擎"),
-                load_icon(resource_path("asset", "engine.svg")),
-                self._create_engine_tab(),
-            ),
+            ("core", self.tr("核心"), FIF.IOT, self._create_core_tab()),
             ("rule", self.tr("规则"), FIF.CHECKBOX, self._create_rule_tab()),
             ("appearance", self.tr("外观"), FIF.PALETTE, self._create_appearance_tab()),
             ("notify", self.tr("通知"), FIF.MESSAGE, self._create_notify_tab()),
@@ -415,57 +436,187 @@ class SettingsWindow(FluentWindow):
         if not hasattr(self, "home_status_detail"):
             return
 
-        engine_label = self._current_engine_label()
         user_qq = self.data.get("User_QQ", "") or self.tr("未填写")
-        self.home_status_detail.setText(
-            self.tr("引擎: {engine}  QQ号: {qq}").format(engine=engine_label, qq=user_qq)
-        )
+        self.home_status_detail.setText(self.tr("QQ号: {qq}").format(qq=user_qq))
         self._refresh_notification_status()
 
-    def _refresh_notification_status(self, muted: bool | None = None):
+    _CORE_STATE_TITLE = {
+        CoreState.RUNNING: "正在运行",
+        CoreState.PAUSED: "已暂停",
+        CoreState.DETACHED: "核心未启动",
+    }
+
+    def _refresh_notification_status(self, state: CoreState | None = None):
         if not hasattr(self, "home_status_title"):
             return
 
-        muted = is_notifications_muted() if muted is None else muted
-        self.home_status_title.setText(self.tr("已暂停") if muted else self.tr("正在运行"))
-        self._refresh_home_status_badge(muted)
+        state = get_core_state() if state is None else state
+        self.home_status_title.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
+        self._refresh_home_status_badge(state)
 
-    def _refresh_home_status_badge(self, muted: bool):
+    def _refresh_home_status_badge(self, state: CoreState):
         if not hasattr(self, "home_status_badge_box"):
             return
 
-        if self.home_status_badge is not None and self.home_status_badge_muted == muted:
+        if self.home_status_badge is not None and self.home_status_badge_state == state:
             return
 
         if self.home_status_badge is not None:
             self.home_status_badge.setParent(None)
             self.home_status_badge.deleteLater()
 
-        self.home_status_badge = (
-            IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
-            if muted
-            else IconInfoBadge.success(FIF.ACCEPT_MEDIUM, self.home_status_badge_box)
-        )
-        self.home_status_badge_muted = muted
+        if state == CoreState.RUNNING:
+            self.home_status_badge = IconInfoBadge.success(
+                FIF.ACCEPT_MEDIUM, self.home_status_badge_box
+            )
+            tooltip = self.tr("核心运行中（单击暂停，长按卸载）")
+        elif state == CoreState.PAUSED:
+            self.home_status_badge = IconInfoBadge.warning(FIF.PAUSE, self.home_status_badge_box)
+            tooltip = self.tr("核心已暂停（单击恢复，长按卸载）")
+        else:
+            self.home_status_badge = IconInfoBadge.error(FIF.CLOSE, self.home_status_badge_box)
+            tooltip = self.tr("核心未启动（单击启动）")
+
+        self.home_status_badge_state = state
         self.home_status_badge.setFixedSize(36, 36)
         self.home_status_badge.setIconSize(QSize(18, 18))
         self.home_status_badge.move(4, 4)
         self.home_status_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.home_status_badge.mousePressEvent = self._on_home_status_badge_pressed
-        self.home_status_badge.setToolTip(
-            self.tr("点击恢复通知") if muted else self.tr("点击暂停通知")
-        )
+        self.home_status_badge.mousePressEvent = self._on_badge_pressed
+        self.home_status_badge.mouseReleaseEvent = self._on_badge_released
+        self.home_status_badge.setToolTip(tooltip)
         self.home_status_badge.show()
 
-    def _on_home_status_badge_pressed(self, event):
+    def _on_badge_pressed(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             return
-
-        toggle_notifications_muted()
+        self._badge_long_pressed = False
+        self._badge_long_press_timer.start(650)
         event.accept()
 
-    def _on_notifications_muted_changed(self, muted: bool):
-        self._refresh_notification_status(muted)
+    def _on_badge_released(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        self._badge_long_press_timer.stop()
+        if not self._badge_long_pressed:
+            toggle_core()
+        event.accept()
+
+    def _on_badge_long_press(self):
+        self._badge_long_pressed = True
+        confirmed = show_fluent_message(
+            self,
+            self.tr("卸载核心"),
+            self.tr("将从 QQ 进程卸载注入的钩子，需重新启动核心才能恢复监听。确定卸载？"),
+            yes_text=self.tr("卸载"),
+            cancel_text=self.tr("取消"),
+        )
+        if confirmed:
+            unload_core()
+
+    def _on_core_state_changed(self, state: CoreState):
+        self._refresh_notification_status(state)
+        if hasattr(self, "core_status_value"):
+            self.core_status_value.setText(self.tr(self._CORE_STATE_TITLE.get(state, "正在运行")))
+
+    def _create_core_tab(self):
+        """核心（SnowLuma 内核）管理页：状态、版本、检查更新。"""
+        widget = QWidget()
+        form = QFormLayout(widget)
+
+        self.core_status_value = CaptionLabel(
+            self.tr(self._CORE_STATE_TITLE.get(get_core_state(), "正在运行"))
+        )
+        self.core_version_value = CaptionLabel(self._core_version_text())
+
+        self.core_proxy_edit = self._line_edit(
+            self.data.get("Core_Download_Proxy", "")
+        )
+        self.core_proxy_edit.setPlaceholderText(
+            self.tr("留空走 GitHub 官方；国内可填第三方代理，如 https://ghproxy.com")
+        )
+
+        self.core_check_btn = PrimaryPushButton(self.tr("检查更新"))
+        self.core_check_btn.clicked.connect(self._on_check_core_update)
+
+        self.core_update_result = CaptionLabel("")
+        self.core_update_result.setWordWrap(True)
+        self.core_update_result.setStyleSheet("color: #707070;")
+
+        hint = QLabel(
+            self.tr(
+                "内核为 SnowLuma 官方发布的专有组件，仅从官方 release 下载、不随本程序分发。"
+            )
+        )
+        hint.setWordWrap(True)
+
+        form.addRow(self.tr("核心状态"), self.core_status_value)
+        form.addRow(self.tr("内核版本"), self.core_version_value)
+        form.addRow(self.tr("下载源代理"), self.core_proxy_edit)
+        form.addRow(self.core_check_btn)
+        form.addRow(self.core_update_result)
+        form.addRow(hint)
+
+        return widget
+
+    def _core_version_text(self) -> str:
+        if not is_core_installed():
+            return self.tr("未安装")
+        version = current_core_version()
+        return version or self.tr("已安装（版本未知）")
+
+    def _on_check_core_update(self):
+        self.core_check_btn.setEnabled(False)
+        self.core_update_result.setText(self.tr("正在检查更新…"))
+        self._core_thread = _CoreUpdateThread("check", parent=self)
+        self._core_thread.checked.connect(self._on_core_update_checked)
+        self._core_thread.failed.connect(self._on_core_update_failed)
+        self._core_thread.start()
+
+    def _on_core_update_checked(self, status):
+        if status.error:
+            self.core_update_result.setText(self.tr("检查失败: {err}").format(err=status.error))
+            self.core_check_btn.setEnabled(True)
+            return
+
+        if not status.has_update and status.installed:
+            self.core_update_result.setText(
+                self.tr("已是最新: {ver}").format(ver=status.current_version or status.latest_version)
+            )
+            self.core_check_btn.setEnabled(True)
+            return
+
+        action = self.tr("安装") if not status.installed else self.tr("更新")
+        confirmed = show_fluent_message(
+            self,
+            self.tr("{action}内核").format(action=action),
+            self.tr(
+                "将从 SnowLuma 官方 release 下载内核 {ver}。\n"
+                "该组件为 SnowLuma 专有，使用即表示遵守其许可。是否继续？"
+            ).format(ver=status.latest_version),
+            yes_text=action,
+            cancel_text=self.tr("取消"),
+        )
+        if not confirmed:
+            self.core_update_result.setText("")
+            self.core_check_btn.setEnabled(True)
+            return
+
+        self.core_update_result.setText(self.tr("正在下载安装…"))
+        proxy = self.core_proxy_edit.text().strip() or None
+        self._core_thread = _CoreUpdateThread("install", proxy=proxy, parent=self)
+        self._core_thread.installed.connect(self._on_core_update_installed)
+        self._core_thread.failed.connect(self._on_core_update_failed)
+        self._core_thread.start()
+
+    def _on_core_update_installed(self, version: str):
+        self.core_version_value.setText(self._core_version_text())
+        self.core_update_result.setText(self.tr("已安装: {ver}").format(ver=version))
+        self.core_check_btn.setEnabled(True)
+
+    def _on_core_update_failed(self, message: str):
+        self.core_update_result.setText(self.tr("失败: {msg}").format(msg=message))
+        self.core_check_btn.setEnabled(True)
 
     def _on_version_label_clicked(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
@@ -499,22 +650,11 @@ class SettingsWindow(FluentWindow):
         missing = []
         if not self.data.get("User_QQ", ""):
             missing.append(self.tr("未填写 QQ 号"))
-        tencent_path = self.data.get("Tencent_Files_Path", "")
-        if not tencent_path:
-            missing.append(self.tr("未设置聊天信息保存文件夹"))
-        elif not os.path.isdir(tencent_path):
-            missing.append(self.tr("聊天信息保存文件夹不存在"))
         return not missing, missing
 
     def _home_summary_rows(self, status_items: list[str]) -> list[tuple[str, str]]:
-        engine_label = self._current_engine_label()
         return [
             (self.tr("QQ 号"), self.data.get("User_QQ", "") or self.tr("未填写")),
-            (
-                self.tr("聊天信息保存文件夹"),
-                self.data.get("Tencent_Files_Path", "") or self.tr("未设置"),
-            ),
-            (self.tr("通知监听引擎"), engine_label),
             (
                 self.tr("重要人物"),
                 str(len(self.data.get("Important_Persons", self.settings.important_persons))),
@@ -528,16 +668,6 @@ class SettingsWindow(FluentWindow):
                 self.tr("正常") if not status_items else "，".join(status_items),
             ),
         ]
-
-    def _current_engine_label(self) -> str:
-        engine = normalize_notification_engine(
-            self.data.get("NotificationEngine", self.settings.notification_engine),
-            legacy_uia=self.data.get("UIAMode", self.settings.uia_mode),
-        )
-        return next(
-            (self.tr(label) for key, label in ENGINE_CHOICES if key == engine),
-            self.tr("自动选择"),
-        )
 
     def _create_basic_tab(self):
         """基本设置标签页"""
@@ -553,23 +683,6 @@ class SettingsWindow(FluentWindow):
         self.cooldown.setValue(self.data.get("Cooldown", self.settings.cooldown))
 
         self.user_qq = self._line_edit(self.data.get("User_QQ", ""))
-
-        self.tencent_path = self._line_edit(self.data.get("Tencent_Files_Path", ""))
-        btn_path = PushButton(self.tr("浏览"))
-        btn_path.clicked.connect(self._select_path)
-
-        path_row = QHBoxLayout()
-        path_row.addWidget(self.tencent_path)
-        path_row.addWidget(btn_path)
-
-        self.whereis_tencentfile = QLabel(self.tr("我的聊天信息保存在哪里？"))
-        self.whereis_tencentfile.mousePressEvent = lambda event: show_fluent_message(
-            self,
-            self.tr("提示"),
-            self.tr(
-                '打开 QQ 主面板，点击左下角设置，在存储设置选项卡中显示"聊天消息默认保存到..."'
-            ),
-        )
 
         self.language_combo = ComboBox()
         self.language_combo.addItems([self.tr("English"), self.tr("日本語"), self.tr("简体中文")])
@@ -596,101 +709,10 @@ class SettingsWindow(FluentWindow):
         form.addRow(self.tr("扫描间隔 (秒)"), self.scan_interval)
         form.addRow(self.tr("冷却时间 (秒)"), self.cooldown)
         form.addRow(self.tr("QQ 号"), self.user_qq)
-        form.addRow(self.tr("聊天信息保存文件夹"), path_row)
-        form.addRow(self.whereis_tencentfile)
         form.addRow(self.tr("界面语言"), self.language_combo)
         form.addRow(self.auto_start)
 
         return widget
-
-    def _create_engine_tab(self):
-        """引擎配置标签页"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(18)
-
-        form = QFormLayout()
-        layout.addLayout(form)
-
-        self.notification_engine_choices = list(ENGINE_CHOICES)
-        self.notification_engine = ComboBox()
-        for key, label in ENGINE_CHOICES:
-            self.notification_engine.addItem(self.tr(label))
-        engine = normalize_notification_engine(
-            self.data.get("NotificationEngine", self.settings.notification_engine),
-            legacy_uia=self.data.get("UIAMode", self.settings.uia_mode),
-        )
-        engine_index = next(
-            (
-                index
-                for index, (key, _) in enumerate(self.notification_engine_choices)
-                if key == engine
-            ),
-            0,
-        )
-        self.notification_engine.setCurrentIndex(max(engine_index, 0))
-        self.notification_engine.currentIndexChanged.connect(self._sync_engine_config_visibility)
-
-        form.addRow(self.tr("通知监听引擎"), self.notification_engine)
-
-        self.onebot_engine_panel = QWidget()
-        onebot_form = QFormLayout(self.onebot_engine_panel)
-        onebot_title = SubtitleLabel(self.tr("OneBot V11（正向 WebSocket）"))
-        onebot_hint = QLabel(
-            self.tr(
-                "填写 OneBot 协议端暴露的正向 WebSocket 地址。常见地址为 ws://127.0.0.1:8080/event；若协议端配置了 access_token，请在 Token 中填写同一个值。"
-            )
-        )
-        onebot_hint.setWordWrap(True)
-
-        self.onebot_v11_ws_url = self._line_edit(
-            self.data.get("OneBotV11_WS_URL", self.settings.onebot_v11_ws_url)
-        )
-        self.onebot_v11_token = self._line_edit(
-            self.data.get("OneBotV11_Access_Token", self.settings.onebot_v11_token)
-        )
-        self.onebot_v11_token.setEchoMode(QLineEdit.EchoMode.Password)
-
-        onebot_form.addRow(onebot_title)
-        onebot_form.addRow(onebot_hint)
-        onebot_form.addRow(self.tr("WS 地址"), self.onebot_v11_ws_url)
-        onebot_form.addRow(self.tr("Token"), self.onebot_v11_token)
-        layout.addWidget(self.onebot_engine_panel)
-
-        layout.addStretch()
-
-        self._sync_engine_config_visibility()
-
-        return widget
-
-    def _selected_engine_key(self) -> str:
-        if not hasattr(self, "notification_engine"):
-            return normalize_notification_engine(self.settings.notification_engine)
-
-        index = self.notification_engine.currentIndex()
-        if 0 <= index < len(self.notification_engine_choices):
-            return self.notification_engine_choices[index][0]
-        return "auto"
-
-    def _sync_engine_config_visibility(self, *_args):
-        engine = self._selected_engine_key()
-        if hasattr(self, "onebot_engine_panel"):
-            self.onebot_engine_panel.setVisible(engine == ENGINE_ONEBOT_V11)
-
-    def _sync_http_push_debug_enabled(self, *_args):
-        if not hasattr(self, "http_push_enabled"):
-            return
-
-        enabled = self.http_push_enabled.isChecked()
-        for widget_name in (
-            "http_push_host",
-            "http_push_port",
-            "http_push_path",
-            "http_push_token",
-        ):
-            widget = getattr(self, widget_name, None)
-            if widget is not None:
-                widget.setEnabled(enabled)
 
     def _create_rule_tab(self):
         """规则设置标签页"""
@@ -986,40 +1008,11 @@ class SettingsWindow(FluentWindow):
         content = QWidget()
         form = QFormLayout(content)
 
-        self.http_push_enabled = CheckBox(self.tr("启用 HTTP Push 调试引擎"))
-        self.http_push_enabled.setChecked(
-            self.data.get("HTTPPush_Enabled", self.settings.http_push_enabled)
+        hint = QLabel(
+            self.tr("捕获方式：原生注入（SnowLuma 内核）。核心开关请在悬浮球或首页状态徽章上操作。")
         )
-        self.http_push_enabled.stateChanged.connect(self._sync_http_push_debug_enabled)
-
-        self.http_push_debug_hint = QLabel(
-            self.tr(
-                'HTTP Push 是调试页的辅助监听器，可与当前主引擎同时运行。测试 JSON：{"sender":"测试群","message":"测试消息"}'
-            )
-        )
-        self.http_push_debug_hint.setWordWrap(True)
-
-        self.http_push_host = self._line_edit(
-            self.data.get("HTTPPush_Host", self.settings.http_push_host)
-        )
-        self.http_push_port = SpinBox()
-        self.http_push_port.setRange(1, 65535)
-        self.http_push_port.setValue(self.data.get("HTTPPush_Port", self.settings.http_push_port))
-        self.http_push_path = self._line_edit(
-            self.data.get("HTTPPush_Path", self.settings.http_push_path)
-        )
-        self.http_push_token = self._line_edit(
-            self.data.get("HTTPPush_Token", self.settings.http_push_token)
-        )
-        self.http_push_token.setEchoMode(QLineEdit.EchoMode.Password)
-
-        form.addRow(self.tr("HTTP Push"), self.http_push_enabled)
-        form.addRow(self.http_push_debug_hint)
-        form.addRow(self.tr("监听地址"), self.http_push_host)
-        form.addRow(self.tr("监听端口"), self.http_push_port)
-        form.addRow(self.tr("请求路径"), self.http_push_path)
-        form.addRow(self.tr("Token"), self.http_push_token)
-        self._sync_http_push_debug_enabled()
+        hint.setWordWrap(True)
+        form.addRow(hint)
 
         return content
 
@@ -1147,12 +1140,6 @@ class SettingsWindow(FluentWindow):
         """获取列表数据"""
         list_widget = container.list_widget
         return [list_widget.item(i).text() for i in range(list_widget.count())]
-
-    def _select_path(self):
-        """选择文件夹"""
-        path = QFileDialog.getExistingDirectory(self, self.tr("选择文件夹"))
-        if path:
-            self.tencent_path.setText(path)
 
     def _select_file(self, line):
         """选择文件"""
@@ -1293,12 +1280,6 @@ class SettingsWindow(FluentWindow):
 
     def save_settings(self):
         """保存设置"""
-        engine_index = self.notification_engine.currentIndex()
-        if 0 <= engine_index < len(self.notification_engine_choices):
-            notification_engine = self.notification_engine_choices[engine_index][0]
-        else:
-            notification_engine = "auto"
-
         auto_start_enabled = self.auto_start.isChecked() if is_auto_start_supported() else False
         if is_auto_start_supported() and not set_auto_start_enabled(auto_start_enabled):
             show_fluent_message(
@@ -1313,17 +1294,8 @@ class SettingsWindow(FluentWindow):
                 "ScanInterval": self.scan_interval.value(),
                 "Cooldown": self.cooldown.value(),
                 "Auto_Start": auto_start_enabled,
-                "Tencent_Files_Path": self.tencent_path.text(),
                 "User_QQ": self.user_qq.text(),
-                "NotificationEngine": notification_engine,
-                "UIAMode": notification_engine == "uia",
-                "OneBotV11_WS_URL": self.onebot_v11_ws_url.text(),
-                "OneBotV11_Access_Token": self.onebot_v11_token.text(),
-                "HTTPPush_Enabled": self.http_push_enabled.isChecked(),
-                "HTTPPush_Host": self.http_push_host.text(),
-                "HTTPPush_Port": self.http_push_port.value(),
-                "HTTPPush_Path": self.http_push_path.text(),
-                "HTTPPush_Token": self.http_push_token.text(),
+                "Core_Download_Proxy": self.core_proxy_edit.text().strip(),
                 "Important_Persons": self._get_list(self.list_persons),
                 "Important_Keywords": self._get_list(self.list_keywords),
                 "BlackList": self._get_list(self.list_black),

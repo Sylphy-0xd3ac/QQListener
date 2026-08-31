@@ -15,6 +15,13 @@ dependencies = [
     "pycaw>=20240210; sys_platform == 'win32'",
     "uiautomation>=2.0.29; sys_platform == 'win32'",
     "winsdk>=1.0.0b10; sys_platform == 'win32'",
+    "pywin32>=311; sys_platform == 'win32'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
 ]
 
 [project.optional-dependencies]

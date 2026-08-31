@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from src.core.notification_state import (
-    add_notification_state_listener,
-    is_notifications_muted,
-    remove_notification_state_listener,
-    toggle_notifications_muted,
+from src.core.core_controller import (
+    CoreState,
+    add_core_state_listener,
+    get_core_state,
+    remove_core_state_listener,
+    toggle_core,
 )
 from src.core.resources import app_icon_path, app_icon_png_path
 from src.ui.qt_compat import (
@@ -27,6 +28,7 @@ from src.ui.qt_compat import (
 
 class FloatingStatusBall(QWidget):
     show_settings_requested = Signal()
+    unload_requested = Signal()
 
     _LONG_PRESS_MS = 650
     _DRAG_DISTANCE = 5
@@ -55,10 +57,10 @@ class FloatingStatusBall(QWidget):
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(self._trigger_long_press)
 
-        self._state_listener = self._on_notifications_muted_changed
-        add_notification_state_listener(self._state_listener)
+        self._state_listener = self._on_core_state_changed
+        add_core_state_listener(self._state_listener)
         self.destroyed.connect(
-            lambda *_args: remove_notification_state_listener(self._state_listener)
+            lambda *_args: remove_core_state_listener(self._state_listener)
         )
 
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -130,7 +132,7 @@ class FloatingStatusBall(QWidget):
 
         self._long_press_timer.stop()
         if not self._dragging and not self._long_press_triggered:
-            toggle_notifications_muted()
+            toggle_core()
 
         self._press_global_pos = None
         self._press_window_pos = None
@@ -138,12 +140,22 @@ class FloatingStatusBall(QWidget):
         self._long_press_triggered = False
         event.accept()
 
+    _STATE_TOOLTIP = {
+        CoreState.RUNNING: "核心运行中（单击暂停，长按卸载）",
+        CoreState.PAUSED: "核心已暂停（单击恢复，长按卸载）",
+        CoreState.DETACHED: "核心未启动（单击启动）",
+    }
+    # 暂停 = 琥珀，未注入 = 灰
+    _STATE_SLASH_COLOR = {
+        CoreState.PAUSED: QColor(217, 119, 6),
+        CoreState.DETACHED: QColor(148, 163, 184),
+    }
+
     def refresh_state(self):
-        muted = is_notifications_muted()
-        self.setToolTip("已暂停" if muted else "通知已启用")
+        self.setToolTip(self._STATE_TOOLTIP.get(get_core_state(), "QQListener"))
         self.update()
 
-    def _on_notifications_muted_changed(self, _muted: bool):
+    def _on_core_state_changed(self, _state: CoreState):
         self.refresh_state()
 
     def _draw_logo(self, painter: QPainter):
@@ -154,10 +166,9 @@ class FloatingStatusBall(QWidget):
         else:
             painter.drawPixmap(self._logo_rect, pixmap)
 
-        if is_notifications_muted():
-            painter.setPen(
-                QPen(QColor(225, 29, 72), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-            )
+        slash_color = self._STATE_SLASH_COLOR.get(get_core_state())
+        if slash_color is not None:
+            painter.setPen(QPen(slash_color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(
                 self._logo_rect.right() - 1,
                 self._logo_rect.top() + 1,
@@ -170,7 +181,7 @@ class FloatingStatusBall(QWidget):
             return
 
         self._long_press_triggered = True
-        self.show_settings_requested.emit()
+        self.unload_requested.emit()
 
     def _move_to_default_position(self):
         screen = screen_at(QCursor.pos())

@@ -1,12 +1,9 @@
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
-
-from src.core.notification_engines import normalize_notification_engine
 
 
 class Settings:
@@ -18,14 +15,29 @@ class Settings:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, settings_file: str = "setting.json") -> None:
+    def __init__(self, settings_file: str | None = None) -> None:
         if Settings._initialized:
             return
 
-        self._settings_file: str = settings_file
+        self._settings_file: str = self._resolve_settings_file(settings_file)
         self._data: dict[str, Any] = {}
         self._load()
         Settings._initialized = True
+
+    @staticmethod
+    def _resolve_settings_file(settings_file: str | None) -> str:
+        # 相对路径会随工作目录漂移：开机自启时 CWD 常是 system32，导致读不到/
+        # 写不进 setting.json，表现为每次都当首次运行。锚定到应用根目录。
+        if settings_file is None:
+            from src.core.resources import app_root
+
+            return str(app_root() / "setting.json")
+        candidate = Path(settings_file)
+        if candidate.is_absolute():
+            return str(candidate)
+        from src.core.resources import app_root
+
+        return str(app_root() / candidate)
 
     def _load(self) -> None:
         if not self._settings_file:
@@ -103,129 +115,6 @@ class Settings:
         """标记已配置"""
         self._data["Green_Hand"] = False
 
-    @staticmethod
-    def _expand_path(value: Any) -> Path | None:
-        if value is None:
-            return None
-
-        text = str(value).strip()
-        if not text:
-            return None
-
-        return Path(os.path.expandvars(os.path.expanduser(text)))
-
-    @staticmethod
-    def _is_dir(path: Path | None) -> bool:
-        if path is None:
-            return False
-        try:
-            return path.is_dir()
-        except OSError:
-            return False
-
-    @classmethod
-    def _is_usable_qq_user_dir(cls, path: Path | None) -> bool:
-        if not cls._is_dir(path):
-            return False
-        return cls._is_dir(path / "nt_qq") if path else False
-
-    @staticmethod
-    def _mtime(path: Path) -> float:
-        try:
-            return path.stat().st_mtime
-        except OSError:
-            return 0.0
-
-    @classmethod
-    def _latest_numeric_dir(cls, base_path: Path | None) -> Path | None:
-        if not cls._is_dir(base_path):
-            return None
-
-        try:
-            numeric_dirs = [
-                child
-                for child in base_path.iterdir()
-                if child.name.isdigit() and cls._is_dir(child)
-            ]
-        except OSError:
-            return None
-
-        if not numeric_dirs:
-            return None
-
-        usable_dirs = [path for path in numeric_dirs if cls._is_usable_qq_user_dir(path)]
-        return max(usable_dirs or numeric_dirs, key=cls._mtime)
-
-    @classmethod
-    def _candidate_tencent_files_roots(cls, configured_path: Path | None) -> list[Path]:
-        roots: list[Path] = []
-        seen: set[str] = set()
-
-        def add(path: Path | None) -> None:
-            if path is None:
-                return
-            key = str(path)
-            if key not in seen:
-                roots.append(path)
-                seen.add(key)
-
-        if configured_path:
-            if configured_path.name.isdigit():
-                add(configured_path.parent)
-            elif configured_path.name.lower() in {"tencent files", "腾讯文件"}:
-                add(configured_path)
-            else:
-                add(configured_path / "Tencent Files")
-
-        for env_name in ("USERPROFILE", "USERPATH", "HOME"):
-            home = cls._expand_path(os.environ.get(env_name))
-            if home:
-                add(home / "Documents" / "Tencent Files")
-
-        add(Path.home() / "Documents" / "Tencent Files")
-        return roots
-
-    def _resolve_qq_user_dir(self) -> Path | None:
-        configured_path = self._expand_path(self.get("Tencent_Files_Path", ""))
-        user_qq = str(self.get("User_QQ", "") or "").strip()
-        configured_existing_dir: Path | None = None
-
-        configured_candidates: list[Path] = []
-        if configured_path:
-            if user_qq:
-                configured_candidates.append(configured_path / user_qq)
-            configured_candidates.append(configured_path)
-
-        for candidate in configured_candidates:
-            if self._is_usable_qq_user_dir(candidate):
-                return candidate
-
-        for candidate in configured_candidates:
-            if candidate.name.isdigit() and self._is_dir(candidate):
-                configured_existing_dir = candidate
-                break
-
-        for base_path in self._candidate_tencent_files_roots(configured_path):
-            latest_dir = self._latest_numeric_dir(base_path)
-            if latest_dir:
-                return latest_dir
-
-        return configured_existing_dir
-
-    @property
-    def qq_user_dir(self) -> str | None:
-        resolved = self._resolve_qq_user_dir()
-        return str(resolved) if resolved else None
-
-    @property
-    def thumb_path(self) -> str | None:
-        qq_user_dir = self._resolve_qq_user_dir()
-        if qq_user_dir:
-            return str(
-                qq_user_dir / "nt_qq" / "nt_data" / "Pic" / time.strftime("%Y-%m") / "Thumb"
-            )
-        return None
-
     @property
     def important_persons(self) -> list[str]:
         result = self.get("Important_Persons", [])
@@ -259,52 +148,6 @@ class Settings:
     @property
     def auto_start(self) -> bool:
         return bool(self.get("Auto_Start", False))
-
-    @property
-    def uia_mode(self) -> bool:
-        return bool(self.get("UIAMode", False))
-
-    @property
-    def notification_engine(self) -> str:
-        return normalize_notification_engine(
-            self.get("NotificationEngine", None),
-            legacy_uia=self.uia_mode,
-        )
-
-    @property
-    def onebot_v11_ws_url(self) -> str:
-        result = self.get("OneBotV11_WS_URL", "ws://127.0.0.1:8080/event")
-        return str(result).strip() if result else ""
-
-    @property
-    def onebot_v11_token(self) -> str:
-        result = self.get("OneBotV11_Access_Token", "")
-        return str(result) if result else ""
-
-    @property
-    def http_push_enabled(self) -> bool:
-        return bool(self.get("HTTPPush_Enabled", False))
-
-    @property
-    def http_push_host(self) -> str:
-        result = self.get("HTTPPush_Host", "127.0.0.1")
-        return str(result).strip() if result else "127.0.0.1"
-
-    @property
-    def http_push_port(self) -> int:
-        result = self.get("HTTPPush_Port", 8765)
-        return int(result) if isinstance(result, (int, float)) else 8765
-
-    @property
-    def http_push_path(self) -> str:
-        result = self.get("HTTPPush_Path", "/push")
-        path = str(result).strip() if result else "/push"
-        return path if path.startswith("/") else f"/{path}"
-
-    @property
-    def http_push_token(self) -> str:
-        result = self.get("HTTPPush_Token", "")
-        return str(result) if result else ""
 
     @property
     def qq_only(self) -> bool:
