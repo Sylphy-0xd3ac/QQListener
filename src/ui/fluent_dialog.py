@@ -1,5 +1,5 @@
-from src.ui.qt_compat import QDialog, QWidget
 from src.ui.fluent_compat import MessageBox
+from src.ui.qt_compat import QDialog, QWidget
 
 
 def show_fluent_message(

@@ -31,6 +31,7 @@ _F_GROUP_NAME = 7
 # ContentHead
 _F_MSG_TYPE = 1
 _F_SEQUENCE = 5
+_F_TIMESTAMP = 6
 _F_NT_MSG_SEQUENCE = 11
 
 
@@ -84,6 +85,7 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
     segments = parse_message_body(body_data, is_group=is_group)
 
     sender_id = str(from_uin) if from_uin else from_uid
+    peer_uid = ""
     sender_name = ""
     sender_nickname = ""
     sender_group_card = ""
@@ -102,7 +104,9 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
             self_uin = 0
         peer_uin = to_uin if self_uin and from_uin == self_uin else from_uin
         peer_id = str(peer_uin) if peer_uin else from_uid
-        account_uid = from_uid if self_uin and from_uin == self_uin else to_uid
+        is_outgoing = bool(self_uin) and from_uin == self_uin
+        account_uid = from_uid if is_outgoing else to_uid
+        peer_uid = to_uid if is_outgoing else from_uid
         forward_data = _field_bytes(response, _F_FORWARD)
         if forward_data:
             sender_name = _field_str(decode_fields(forward_data), _F_FRIEND_NAME)
@@ -111,6 +115,7 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
     sequence = _field_int(content, _F_SEQUENCE)
     nt_sequence = _field_int(content, _F_NT_MSG_SEQUENCE)
     raw_seq = sequence if is_group else nt_sequence or sequence
+    timestamp = _field_int(content, _F_TIMESTAMP)
 
     return CapturedMessage(
         scene="group" if is_group else "c2c",
@@ -123,4 +128,6 @@ def decode_message_push(packet: RecvPacket) -> CapturedMessage | None:
         account_uid=account_uid,
         sender_nickname=sender_nickname,
         sender_group_card=sender_group_card,
+        peer_uid=peer_uid,
+        timestamp=timestamp,
     )

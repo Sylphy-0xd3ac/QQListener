@@ -87,6 +87,9 @@ def build_command(name: str, qt_api: str) -> list[str]:
         "src.ui.qt_compat",
         "--hidden-import",
         f"{qt_binding}.QtSvg",
+        # qt_compat 用 import_module 动态取这两个模块，PyInstaller 静态扫不出来。
+        "--hidden-import",
+        f"{qt_binding}.QtNetwork",
         "--hidden-import",
         "aiohttp.web",
         "--hidden-import",
@@ -102,6 +105,7 @@ def build_command(name: str, qt_api: str) -> list[str]:
             f"{excluded_qt_binding}.QtGui",
             f"{excluded_qt_binding}.QtWidgets",
             f"{excluded_qt_binding}.QtSvg",
+            f"{excluded_qt_binding}.QtNetwork",
         ],
     )
 

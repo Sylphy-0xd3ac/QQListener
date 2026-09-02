@@ -1,3 +1,4 @@
+import contextlib
 import sys
 from pathlib import Path
 
@@ -20,7 +21,9 @@ def auto_start_command() -> str:
     executable_name = executable.name.lower()
 
     if executable_name in {"python.exe", "pythonw.exe"}:
-        script = Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else Path("main.py").resolve()
+        script = (
+            Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else Path("main.py").resolve()
+        )
         return f"{_quote(str(executable))} {_quote(str(script))}"
 
     return _quote(str(executable))
@@ -54,10 +57,8 @@ def set_auto_start_enabled(enabled: bool) -> bool:
             if enabled:
                 winreg.SetValueEx(key, RUN_VALUE_NAME, 0, winreg.REG_SZ, auto_start_command())
             else:
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     winreg.DeleteValue(key, RUN_VALUE_NAME)
-                except FileNotFoundError:
-                    pass
         return True
     except OSError:
         logger.exception("设置开机自启动失败")

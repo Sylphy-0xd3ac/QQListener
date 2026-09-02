@@ -12,6 +12,7 @@ from loguru import logger
 from src.ui.qt_compat import (
     QApplication,
     QColor,
+    QDesktopServices,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -25,6 +26,7 @@ from src.ui.qt_compat import (
     QThread,
     QTimer,
     QTranslator,
+    QUrl,
     QVBoxLayout,
     QWidget,
     Signal,
@@ -119,6 +121,7 @@ from src.ui.fluent_compat import (
     LineEdit,
     ListWidget,
     NavigationItemPosition,
+    PlainTextEdit,
     PrimaryPushButton,
     PushButton,
     ScrollArea,
@@ -263,6 +266,13 @@ class SettingsWindow(FluentWindow):
             self.tr("设置"),
             position=NavigationItemPosition.BOTTOM,
         )
+        self.log_interface = self._create_log_interface()
+        self.addSubInterface(
+            self.log_interface,
+            FIF.HISTORY,
+            self.tr("日志"),
+            position=NavigationItemPosition.BOTTOM,
+        )
         self.navigationInterface.addItem(
             "exitInterface",
             FIF.POWER_BUTTON,
@@ -271,6 +281,106 @@ class SettingsWindow(FluentWindow):
             selectable=False,
             position=NavigationItemPosition.BOTTOM,
         )
+
+    def _create_log_interface(self) -> QWidget:
+        """日志页：看日志、调等级、打开文件所在目录。"""
+        from src.core.logging import LOG_LEVELS, log_file_path
+
+        page = QWidget()
+        page.setObjectName("logInterface")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(42, 34, 42, 28)
+        layout.setSpacing(14)
+
+        layout.addWidget(TitleLabel(self.tr("运行日志")))
+        self.log_path_label = CaptionLabel(str(log_file_path()))
+        self.log_path_label.setWordWrap(True)
+        layout.addWidget(self.log_path_label)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(10)
+        controls.addWidget(QLabel(self.tr("等级")))
+        self.log_level_combo = ComboBox()
+        self.log_level_combo.addItems(list(LOG_LEVELS))
+        current = self.data.get("Log_Level", self.settings.log_level)
+        if current not in LOG_LEVELS:
+            current = "INFO"
+        self.log_level_combo.setCurrentText(current)
+        self.log_level_combo.currentTextChanged.connect(self._on_log_level_changed)
+        controls.addWidget(self.log_level_combo)
+
+        self.log_follow = CheckBox(self.tr("自动刷新"))
+        self.log_follow.setChecked(True)
+        controls.addWidget(self.log_follow)
+        controls.addStretch()
+
+        refresh_btn = PushButton(self.tr("刷新"))
+        refresh_btn.setIcon(FIF.SYNC)
+        refresh_btn.clicked.connect(self._refresh_log_view)
+        open_btn = PushButton(self.tr("打开所在目录"))
+        open_btn.setIcon(FIF.FOLDER)
+        open_btn.clicked.connect(self._open_log_dir)
+        clear_btn = PushButton(self.tr("清空"))
+        clear_btn.setIcon(FIF.DELETE)
+        clear_btn.clicked.connect(self._clear_log)
+        for btn in (refresh_btn, open_btn, clear_btn):
+            controls.addWidget(btn)
+        layout.addLayout(controls)
+
+        self.log_view = PlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setLineWrapMode(PlainTextEdit.NoWrap)
+        self.log_view.setStyleSheet("font-family: Menlo, Consolas, monospace; font-size: 12px;")
+        layout.addWidget(self.log_view, 1)
+
+        # 只在日志页可见时轮询，别在后台白烧 CPU。
+        self.log_timer = QTimer(self)
+        self.log_timer.setInterval(1500)
+        self.log_timer.timeout.connect(self._tick_log_view)
+        self.log_timer.start()
+
+        self._refresh_log_view()
+        return page
+
+    def _tick_log_view(self):
+        if not self.log_interface.isVisible() or not self.log_follow.isChecked():
+            return
+        self._refresh_log_view(keep_scroll=True)
+
+    def _refresh_log_view(self, keep_scroll: bool = False):
+        from src.core.logging import read_log_tail
+
+        bar = self.log_view.verticalScrollBar()
+        at_bottom = bar.value() >= bar.maximum() - 4
+        text = read_log_tail(800)
+        if text == self.log_view.toPlainText():
+            return
+        self.log_view.setPlainText(text)
+        if not keep_scroll or at_bottom:
+            self.log_view.verticalScrollBar().setValue(self.log_view.verticalScrollBar().maximum())
+
+    def _on_log_level_changed(self, level: str):
+        from src.core.logging import setup_logging
+
+        self.settings.set("Log_Level", level)
+        self.settings.save()
+        applied = setup_logging(level)
+        logger.info("日志等级已切换为 {}", applied)
+        self._refresh_log_view()
+
+    def _open_log_dir(self):
+        from src.core.logging import log_dir
+
+        target = log_dir()
+        target.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
+    def _clear_log(self):
+        from src.core.logging import clear_log
+
+        if clear_log():
+            logger.info("日志已清空")
+        self._refresh_log_view()
 
     def _line_edit(self, text="") -> LineEdit:
         edit = LineEdit()
@@ -1173,11 +1283,51 @@ class SettingsWindow(FluentWindow):
         widget = QWidget()
         form = QFormLayout(widget)
 
-        self.auto_thumb = CheckBox(self.tr("当有人发送[图片]自动显示缩略图（不稳定）"))
+        self.auto_thumb = CheckBox(self.tr("自动下载并在通知里渲染图片"))
         self.auto_thumb.setChecked(self.data.get("Auto_Show_Thumb", self.settings.auto_show_thumb))
 
         self.always_on_top = CheckBox(self.tr("通知始终置顶"))
         self.always_on_top.setChecked(self.data.get("Always_On_Top", self.settings.always_on_top))
+
+        self.lite_mode = CheckBox(self.tr("性能模式（关闭遮罩/阴影/动画，低配电脑更流畅）"))
+        self.lite_mode.setChecked(self.data.get("Lite_Mode", self.settings.lite_mode))
+
+        self.show_ids = CheckBox(self.tr("默认展开群号与 QQ 号（默认收起，点发送者一行才显示）"))
+        self.show_ids.setChecked(self.data.get("Show_IDs", self.settings.show_ids_by_default))
+
+        self.download_dir_layout = QHBoxLayout()
+        self.download_dir = self._line_edit(
+            self.data.get("Download_Dir", self.settings.download_dir)
+        )
+        self.download_dir.setPlaceholderText(self.tr("留空 = 系统默认下载目录"))
+        self.download_dir_select = PushButton(self.tr("浏览"))
+        self.download_dir_select.setIcon(FIF.FOLDER)
+        self.download_dir_select.clicked.connect(lambda: self._select_dir(self.download_dir))
+        self.download_dir_layout.addWidget(self.download_dir)
+        self.download_dir_layout.addWidget(self.download_dir_select)
+
+        self.pause_queue = CheckBox(self.tr("暂停期间把消息积压起来，恢复监听时合并弹出"))
+        self.pause_queue.setChecked(
+            self.data.get("Pause_Queue_Enabled", self.settings.pause_queue_enabled)
+        )
+
+        self.pause_queue_max = SpinBox()
+        self.pause_queue_max.setRange(1, 500)
+        self.pause_queue_max.setValue(
+            self.data.get("Pause_Queue_Max", self.settings.pause_queue_max)
+        )
+
+        self.reply_enabled = CheckBox(self.tr("点「确认」后可直接回复该会话"))
+        self.reply_enabled.setChecked(self.data.get("Reply_Enabled", self.settings.reply_enabled))
+
+        self.reply_quote_in_group = CheckBox(self.tr("群聊回复带引用"))
+        self.reply_quote_in_group.setChecked(
+            self.data.get("Reply_Quote_In_Group", self.settings.reply_quote_in_group)
+        )
+
+        self.reply_default_text = self._line_edit(
+            self.data.get("Reply_Default_Text", self.settings.reply_default_text)
+        )
 
         self.duration_everyone = SpinBox()
         self.duration_everyone.setRange(1000, 20000)
@@ -1189,6 +1339,28 @@ class SettingsWindow(FluentWindow):
         self.duration_important.setRange(1000, 30000)
         self.duration_important.setValue(
             self.data.get("Duration_Important", self.settings.duration_important)
+        )
+
+        self.playback_volume = Slider()
+        self.playback_volume.setOrientation(Qt.Horizontal)
+        self.playback_volume.setRange(0, 100)
+        self.playback_volume.setValue(
+            self.data.get("Playback_Volume", self.settings.playback_volume)
+        )
+        self.playback_volume_value = QLabel(str(self.playback_volume.value()))
+        self.playback_volume_value.setMinimumWidth(32)
+        self.playback_volume.valueChanged.connect(
+            lambda v: self.playback_volume_value.setText(str(v))
+        )
+        self.playback_volume_layout = QHBoxLayout()
+        self.playback_volume_layout.addWidget(self.playback_volume)
+        self.playback_volume_layout.addWidget(self.playback_volume_value)
+
+        self.force_system_volume = CheckBox(
+            self.tr("播报时把系统主音量拉满（会盖掉你自己调好的音量）")
+        )
+        self.force_system_volume.setChecked(
+            self.data.get("Force_System_Volume", self.settings.force_system_volume)
         )
 
         self.tts = CheckBox(self.tr("全局 TTS（语音播报） 开关"))
@@ -1253,8 +1425,18 @@ class SettingsWindow(FluentWindow):
         self.edge_tts_warning.setWordWrap(True)
         form.addRow(self.auto_thumb)
         form.addRow(self.always_on_top)
+        form.addRow(self.lite_mode)
+        form.addRow(self.show_ids)
+        form.addRow(self.tr("附件下载目录"), self.download_dir_layout)
+        form.addRow(self.pause_queue)
+        form.addRow(self.tr("积压上限（条）"), self.pause_queue_max)
+        form.addRow(self.reply_enabled)
+        form.addRow(self.reply_quote_in_group)
+        form.addRow(self.tr("默认回复内容"), self.reply_default_text)
         form.addRow(self.tr("普通通知时长(ms)"), self.duration_everyone)
         form.addRow(self.tr("重要通知时长(ms)"), self.duration_important)
+        form.addRow(self.tr("播报/提示音音量"), self.playback_volume_layout)
+        form.addRow(self.force_system_volume)
         form.addRow(self.tts)
         form.addRow(self.edge_tts_warning)
         form.addRow(self.tr("EdgeTTS 音色"), self.edge_voice)
@@ -1507,6 +1689,12 @@ class SettingsWindow(FluentWindow):
         if path:
             line.setText(path)
 
+    def _select_dir(self, line):
+        """选择目录"""
+        path = QFileDialog.getExistingDirectory(self, self.tr("选择目录"), line.text().strip())
+        if path:
+            line.setText(path)
+
     def _test_sound(self, line):
         """测试声音"""
         path = line.text().strip()
@@ -1541,12 +1729,33 @@ class SettingsWindow(FluentWindow):
         from src.ui.notify_manager import get_notify_manager
 
         test_data = {
-            "Sender": "测试发送者",
+            "Sender": "测试发送者（测试群）",
+            "Sender_Detail": "群号: 123456　发送者QQ号: 10001",
             "Message": "这是一条测试消息",
+            "Segments": [
+                {"type": "text", "text": "这是一条测试消息", "url": "", "name": ""},
+                {
+                    "type": "file",
+                    "text": "",
+                    "url": "",
+                    "name": "示例附件.pdf",
+                    "size": 204800,
+                    "local_path": "",
+                    "icon_file": "asset/FileIcon/pdf.png",
+                },
+            ],
+            "Quote": {
+                "sender": "被引用的人",
+                "detail": "",
+                "text": "这是被引用的那条消息",
+                "segments": [
+                    {"type": "text", "text": "这是被引用的那条消息", "url": "", "name": ""}
+                ],
+            },
+            "Reply": {},
             "Duration": 5000,
             "Priority": 0,
             "Calling": False,
-            "icon_file": "asset/pdf.png",
         }
         get_notify_manager().show_notification(test_data)
 
@@ -1667,6 +1876,14 @@ class SettingsWindow(FluentWindow):
                 "Sound_Effect_Important": self.sound_important.text(),
                 "Auto_Show_Thumb": self.auto_thumb.isChecked(),
                 "Always_On_Top": self.always_on_top.isChecked(),
+                "Lite_Mode": self.lite_mode.isChecked(),
+                "Show_IDs": self.show_ids.isChecked(),
+                "Download_Dir": self.download_dir.text().strip(),
+                "Pause_Queue_Enabled": self.pause_queue.isChecked(),
+                "Pause_Queue_Max": self.pause_queue_max.value(),
+                "Reply_Enabled": self.reply_enabled.isChecked(),
+                "Reply_Quote_In_Group": self.reply_quote_in_group.isChecked(),
+                "Reply_Default_Text": self.reply_default_text.text().strip() or "收到",
                 "Duration_Everyone": self.duration_everyone.value(),
                 "Duration_Important": self.duration_important.value(),
                 "Notify_Shadow": self.notify_shadow.isChecked(),
@@ -1677,6 +1894,8 @@ class SettingsWindow(FluentWindow):
                 "Calling": self.calling.isChecked(),
                 "Calling_Keyword": self.calling_keyword.text(),
                 "Calling_Duration": self.calling_during.value(),
+                "Playback_Volume": self.playback_volume.value(),
+                "Force_System_Volume": self.force_system_volume.isChecked(),
                 "TTS": self.tts.isChecked(),
                 "Edge_TTS": self.edge_tts.isChecked(),
                 "Edge_Voice": self.edge_voice.currentText(),

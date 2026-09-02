@@ -1,4 +1,5 @@
 import contextlib
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -10,9 +11,21 @@ with src.utils.filtered_print.filtered_print():
 
 from loguru import logger
 
-from src.core.core_controller import is_core_running, unload_core
+from src.core.core_controller import (
+    CoreState,
+    add_core_state_listener,
+    get_core_state,
+    is_core_running,
+    remove_core_state_listener,
+    set_core_state,
+    toggle_core,
+    unload_core,
+)
+from src.core.core_runtime import get_core_runtime
 from src.core.core_service import CoreService
+from src.core.ipc import ControlServer, send_command
 from src.core.logging import setup_logging
+from src.core.pending_queue import clear_pending, drain_pending, pending_count
 from src.core.resources import app_icon_path, app_icon_png_path
 from src.core.settings import get_settings
 from src.core.signals import get_signals
@@ -30,6 +43,7 @@ from src.ui.qt_compat import (
 from src.ui.settings_window import SettingsWindow
 from src.ui.status_ball import FloatingStatusBall
 from src.ui.tray_icon import TrayIcon
+from src.utils.message_processor import build_digest_payload
 
 APP_ICON_PATH = app_icon_path()
 APP_USER_MODEL_ID = "Sylphy.QQListener"
@@ -49,6 +63,8 @@ class QQListenerApp:
         self.notify_manager = get_notify_manager()
         self.settings_watcher: QFileSystemWatcher | None = None
         self.settings_reload_timer: QTimer | None = None
+        self.control_server: ControlServer | None = None
+        self.daemon = True
         self._macos_dock_icon_image = None
 
     def initialize(self) -> bool:
@@ -60,7 +76,7 @@ class QQListenerApp:
         except Exception:
             logger.exception("初始化音频失败")
 
-        self.app = QApplication(sys.argv)
+        self.app = QApplication.instance() or QApplication(sys.argv)
         self._set_application_icon()
         self.app.setQuitOnLastWindowClosed(False)
 
@@ -156,6 +172,26 @@ class QQListenerApp:
         self.signals.show_settings.connect(self.show_settings)
         self.signals.exit_app.connect(self.exit)
         self.signals.settings_changed.connect(self._on_settings_changed)
+        add_core_state_listener(self._on_core_state_changed)
+
+    def _on_core_state_changed(self, state: CoreState):
+        """恢复监听时把暂停期间攒下的消息倒出来；卸载核心则直接丢弃。"""
+        logger.info("核心状态切换为 {}", state.value)
+        if state == CoreState.DETACHED:
+            clear_pending()
+            return
+        if state != CoreState.RUNNING or not pending_count():
+            return
+        # 状态可能由后台线程切换，统一回主线程再建窗口。
+        QTimer.singleShot(0, self._flush_pending)
+
+    def _flush_pending(self):
+        payloads, dropped = drain_pending()
+        digest = build_digest_payload(payloads, dropped)
+        if digest is None:
+            return
+        logger.info("恢复监听，弹出积压消息 {} 条（丢弃 {} 条）", len(payloads), dropped)
+        self.push_notification(digest)
 
     def _watch_settings_file(self):
         if not self.app:
@@ -191,10 +227,21 @@ class QQListenerApp:
             self._hot_reload_settings()
         self._ensure_settings_watch_path()
 
-    def run(self):
+    def run(self, *, daemon: bool = True):
+        self.daemon = daemon
+        # QLocalServer/QLocalSocket 需要一个 Qt 应用对象；单实例检查也要用它，
+        # 所以先建 app，再决定这一次到底是"启动"还是"唤起已有实例"。
+        self.app = QApplication.instance() or QApplication(sys.argv)
+        if not self._start_control_server():
+            print("QQListener 已在运行" + ("" if daemon else "，已打开其设置窗口"))
+            return
+
         if not self.initialize():
             logger.error("初始化失败")
             sys.exit(1)
+
+        if not daemon and not self.settings.is_first_run():
+            self.show_settings()
 
         if self.settings.is_first_run():
             if self.settings_window is None:
@@ -215,6 +262,58 @@ class QQListenerApp:
         exit_code = self.app.exec() if self.app else 1
         self.cleanup()
         sys.exit(exit_code)
+
+    # ---------- 控制通道 ----------
+
+    def _start_control_server(self) -> bool:
+        """返回 False 表示已有实例在跑，本次不该再启动一份。"""
+        server = ControlServer(self._handle_control, self.app)
+        if server.listen():
+            self.control_server = server
+            return True
+        if server.other_instance:
+            send_command("ping" if self.daemon else "show", timeout_ms=1500)
+            return False
+        logger.warning("控制通道未启用，命令行指令将不可用")
+        return True
+
+    def _handle_control(self, command: str, request: dict) -> dict:
+        """守护进程指令入口（在 Qt 主线程上执行）。"""
+        if command == "ping":
+            return {"pid": os.getpid()}
+        if command == "status":
+            return self._status_payload()
+        if command == "start":
+            set_core_state(CoreState.RUNNING)
+        elif command == "pause":
+            set_core_state(CoreState.PAUSED)
+        elif command == "toggle":
+            toggle_core()
+        elif command == "unload":
+            unload_core()
+        elif command == "show":
+            self.show_settings()
+        elif command == "reload":
+            if self.settings.reload():
+                self._hot_reload_settings()
+        elif command == "quit":
+            QTimer.singleShot(0, self.exit)
+            return {"stopping": True}
+        return self._status_payload()
+
+    def _status_payload(self) -> dict:
+        runtime = get_core_runtime()
+        return {
+            "pid": os.getpid(),
+            "daemon": self.daemon,
+            "core_state": get_core_state().value,
+            "runtime_state": runtime.state.value,
+            "runtime_detail": runtime.detail,
+            "qq_pid": runtime.pid,
+            "worker_running": bool(self.worker and self.worker.isRunning()),
+            "pending_messages": pending_count(),
+            "settings_file": self.settings.settings_file,
+        }
 
     def _maybe_run_core_setup(self):
         """受支持平台首次运行：要求阅读同意 SnowLuma 条款并安装核心。"""
@@ -316,7 +415,7 @@ class QQListenerApp:
 
     def push_notification(self, data: dict):
         if not is_core_running():
-            logger.debug("核心未运行，跳过通知显示")
+            logger.debug("核心未运行，跳过通知显示：{}", data.get("Sender"))
             return
 
         try:
@@ -330,6 +429,10 @@ class QQListenerApp:
             self.app.quit()
 
     def cleanup(self):
+        remove_core_state_listener(self._on_core_state_changed)
+        if self.control_server is not None:
+            self.control_server.close()
+            self.control_server = None
         self.notify_manager.close_all_notifications()
         if self.worker and self.worker.isRunning():
             self.worker.stop()
@@ -354,6 +457,6 @@ class QQListenerApp:
         ball.deleteLater()
 
 
-def run_app():
+def run_app(*, daemon: bool = True):
     app = QQListenerApp()
-    app.run()
+    app.run(daemon=daemon)
