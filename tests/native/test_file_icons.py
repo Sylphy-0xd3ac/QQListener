@@ -38,3 +38,20 @@ def test_probe_name_strips_path_separators(tmp_path, monkeypatch):
     probe = file_icons._probe_path(".do/../../cx")
 
     assert probe is None or probe.parent == tmp_path / "probes"
+
+
+def test_custom_log_icon_has_both_theme_variants():
+    """qfluentwidgets 按主题取 black/white 两份 SVG，缺一份暗色下就没图标。"""
+    from qfluentwidgets import Theme
+
+    from src.ui.app_icons import AppIcon
+
+    light = AppIcon.LOG.path(Theme.LIGHT)
+    dark = AppIcon.LOG.path(Theme.DARK)
+
+    assert light != dark
+    for path in (light, dark):
+        assert path.endswith(".svg")
+        from pathlib import Path
+
+        assert Path(path).exists(), f"缺少图标资源: {path}"

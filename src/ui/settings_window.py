@@ -14,6 +14,7 @@ from src.ui.qt_compat import (
     QColor,
     QDesktopServices,
     QFileDialog,
+    QFontDatabase,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -109,7 +110,9 @@ from src.core.core_updater import (
 )
 from src.core.settings import get_settings
 from src.core.signals import get_signals
+from src.ui.app_icons import AppIcon
 from src.ui.fluent_compat import (
+    BodyLabel,
     CaptionLabel,
     CardWidget,
     CheckBox,
@@ -269,7 +272,7 @@ class SettingsWindow(FluentWindow):
         self.log_interface = self._create_log_interface()
         self.addSubInterface(
             self.log_interface,
-            FIF.HISTORY,
+            AppIcon.LOG,
             self.tr("日志"),
             position=NavigationItemPosition.BOTTOM,
         )
@@ -299,7 +302,7 @@ class SettingsWindow(FluentWindow):
 
         controls = QHBoxLayout()
         controls.setSpacing(10)
-        controls.addWidget(QLabel(self.tr("等级")))
+        controls.addWidget(BodyLabel(self.tr("等级")))
         self.log_level_combo = ComboBox()
         self.log_level_combo.addItems(list(LOG_LEVELS))
         current = self.data.get("Log_Level", self.settings.log_level)
@@ -330,7 +333,11 @@ class SettingsWindow(FluentWindow):
         self.log_view = PlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setLineWrapMode(PlainTextEdit.NoWrap)
-        self.log_view.setStyleSheet("font-family: Menlo, Consolas, monospace; font-size: 12px;")
+        # 只换字体，绝不 setStyleSheet：对 Fluent 控件调它会把整套主题 QSS 冲掉，
+        # 剩下 Qt 默认调色板——日志框就成了一坨黑的。
+        mono = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+        mono.setPointSize(11)
+        self.log_view.setFont(mono)
         layout.addWidget(self.log_view, 1)
 
         # 只在日志页可见时轮询，别在后台白烧 CPU。

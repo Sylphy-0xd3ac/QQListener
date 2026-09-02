@@ -4,6 +4,7 @@ import src.utils.filtered_print
 
 with src.utils.filtered_print.filtered_print():
     from qfluentwidgets import (
+        BodyLabel,
         CaptionLabel,
         CardWidget,
         CheckBox,
