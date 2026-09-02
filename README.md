@@ -1,6 +1,6 @@
 # QQListener
 
-> 让每一条重要消息都能被看见、听见。
+> Ciallo～(∠・ω< )⌒★
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://python.org)
 [![PySide6](https://img.shields.io/badge/PySide6-6.7+-green.svg)](https://doc.qt.io/qtforpython/)
