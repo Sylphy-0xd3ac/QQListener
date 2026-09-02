@@ -1,6 +1,6 @@
 from src.core.settings import get_settings
-from src.ui.qt_compat import QColor, QGraphicsDropShadowEffect, QObject, Signal
 from src.ui.notify_window import NotifyWindow
+from src.ui.qt_compat import QColor, QGraphicsDropShadowEffect, QObject, Signal
 
 
 class NotifyManager(QObject):
@@ -25,13 +25,13 @@ class NotifyManager(QObject):
     def show_notification(self, data: dict) -> NotifyWindow:
         win = NotifyWindow(data)
 
-        # 应用阴影效果
-        if self.settings.notify_shadow:
+        # 阴影是通知里最贵的一笔绘制开销，性能模式下直接不上。
+        if self.settings.notify_shadow and not win.lite_mode:
             shadow = QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(50)
+            shadow.setBlurRadius(30)
             shadow.setXOffset(0)
-            shadow.setYOffset(0)
-            shadow.setColor(QColor(0, 0, 0, 200))
+            shadow.setYOffset(4)
+            shadow.setColor(QColor(0, 0, 0, 160))
             win.bg_widget.setGraphicsEffect(shadow)
 
         # 添加到活动通知列表

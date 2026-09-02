@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from importlib import import_module
@@ -23,9 +24,7 @@ def _configured_qt_api() -> str:
     if ui_package is None:
         return "pyside6"
 
-    return _normalize_qt_api(
-        getattr(ui_package, "QT_API", getattr(ui_package, "qtapi", "pyside6"))
-    )
+    return _normalize_qt_api(getattr(ui_package, "QT_API", getattr(ui_package, "qtapi", "pyside6")))
 
 
 QT_API = _configured_qt_api()
@@ -36,13 +35,16 @@ _BINDING = "PySide2" if IS_PYSIDE2 else "PySide6"
 QtCore = import_module(f"{_BINDING}.QtCore")
 QtGui = import_module(f"{_BINDING}.QtGui")
 QtWidgets = import_module(f"{_BINDING}.QtWidgets")
+QtNetwork = import_module(f"{_BINDING}.QtNetwork")
 try:
     QtSvg = import_module(f"{_BINDING}.QtSvg")
 except Exception:
     QtSvg = None
 
 QEasingCurve = QtCore.QEasingCurve
+QFileInfo = QtCore.QFileInfo
 QFileSystemWatcher = QtCore.QFileSystemWatcher
+QCoreApplication = QtCore.QCoreApplication
 QObject = QtCore.QObject
 QPoint = QtCore.QPoint
 QPropertyAnimation = QtCore.QPropertyAnimation
@@ -73,6 +75,7 @@ QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction
 QApplication = QtWidgets.QApplication
 QDialog = QtWidgets.QDialog
 QFileDialog = QtWidgets.QFileDialog
+QFileIconProvider = QtWidgets.QFileIconProvider
 QFormLayout = QtWidgets.QFormLayout
 QFrame = QtWidgets.QFrame
 QGraphicsDropShadowEffect = QtWidgets.QGraphicsDropShadowEffect
@@ -80,7 +83,10 @@ QHBoxLayout = QtWidgets.QHBoxLayout
 QLabel = QtWidgets.QLabel
 QLineEdit = QtWidgets.QLineEdit
 QMenu = QtWidgets.QMenu
+QPushButton = QtWidgets.QPushButton
+QScrollArea = QtWidgets.QScrollArea
 QSizePolicy = QtWidgets.QSizePolicy
+QStackedLayout = QtWidgets.QStackedLayout
 QStackedWidget = QtWidgets.QStackedWidget
 QSystemTrayIcon = QtWidgets.QSystemTrayIcon
 QVBoxLayout = QtWidgets.QVBoxLayout
@@ -91,10 +97,8 @@ def _ensure_namespace(owner: object, name: str, values: dict[str, object]) -> No
     if hasattr(owner, name):
         return
 
-    try:
+    with contextlib.suppress(Exception):
         setattr(owner, name, SimpleNamespace(**values))
-    except Exception:
-        pass
 
 
 def _patch_pyside2_namespaces() -> None:

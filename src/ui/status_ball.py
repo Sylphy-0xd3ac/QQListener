@@ -9,6 +9,7 @@ from src.core.core_controller import (
 )
 from src.core.core_runtime import CoreRuntimeState, get_core_runtime
 from src.core.resources import app_icon_path, app_icon_png_path
+from src.core.settings import get_settings
 from src.ui.qt_compat import (
     QColor,
     QCursor,
@@ -57,9 +58,12 @@ class FloatingStatusBall(QWidget):
         self._long_press_timer = QTimer(self)
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(self._trigger_long_press)
+        self._visual_key: tuple | None = None
         self._runtime_timer = QTimer(self)
         self._runtime_timer.timeout.connect(self.refresh_state)
-        self._runtime_timer.start(500)
+        # 悬浮球是常驻的半透明置顶窗口，每次重绘都要重新合成一遍。
+        # 所以只轮询状态，状态没变就不重绘。
+        self._runtime_timer.start(1000 if get_settings().lite_mode else 500)
 
         self._state_listener = self._on_core_state_changed
         add_core_state_listener(self._state_listener)
@@ -155,8 +159,8 @@ class FloatingStatusBall(QWidget):
 
     def refresh_state(self):
         state = get_core_state()
+        snapshot = get_core_runtime()
         if state == CoreState.RUNNING:
-            snapshot = get_core_runtime()
             tooltip = {
                 CoreRuntimeState.CONNECTED: "接收管道已连接（单击暂停，长按卸载）",
                 CoreRuntimeState.WAITING: "正在等待接收管道（单击暂停，长按卸载）",
@@ -166,6 +170,11 @@ class FloatingStatusBall(QWidget):
             }.get(snapshot.state, snapshot.detail or "QQListener")
         else:
             tooltip = self._STATE_TOOLTIP.get(state, "QQListener")
+
+        visual_key = (state, snapshot.state, tooltip)
+        if visual_key == self._visual_key:
+            return
+        self._visual_key = visual_key
         self.setToolTip(tooltip)
         self.update()
 

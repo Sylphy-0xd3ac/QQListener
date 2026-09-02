@@ -312,6 +312,81 @@ class Settings:
         return str(result) if result else "asset/icon_cancel.png"
 
     @property
+    def download_dir(self) -> str:
+        """附件下载目录；留空表示用系统默认下载目录。"""
+        result = self.get("Download_Dir", "")
+        return str(result) if result else ""
+
+    @property
+    def lite_mode(self) -> bool:
+        """性能模式：关掉遮罩/阴影/动画，低配机器上通知不再卡。"""
+        return bool(self.get("Lite_Mode", False))
+
+    @property
+    def reply_enabled(self) -> bool:
+        return bool(self.get("Reply_Enabled", True))
+
+    @property
+    def reply_default_text(self) -> str:
+        result = self.get("Reply_Default_Text", "收到")
+        return str(result) if result else "收到"
+
+    @property
+    def reply_quote_in_group(self) -> bool:
+        """群聊里以引用回复的形式发送。"""
+        return bool(self.get("Reply_Quote_In_Group", True))
+
+    @property
+    def ok_button_text(self) -> str:
+        result = self.get("OK_btn", "确认")
+        return str(result) if result else "确认"
+
+    @property
+    def cancel_button_text(self) -> str:
+        result = self.get("Cancel_btn", "取消")
+        return str(result) if result else "取消"
+
+    @property
+    def log_level(self) -> str:
+        result = self.get("Log_Level", "INFO")
+        return str(result) if result else "INFO"
+
+    @property
+    def playback_volume(self) -> int:
+        """播报与提示音的播放音量（0-100）。
+
+        不是系统音量——这是我们自己这一路音频的音量。默认 50，别一上来就顶格。
+        """
+        result = self.get("Playback_Volume", 50)
+        if not isinstance(result, (int, float)):
+            return 50
+        return max(0, min(100, int(result)))
+
+    @property
+    def force_system_volume(self) -> bool:
+        """是否顺带把系统主音量拉满。
+
+        默认关：这是"教室里必须听见"的应急开关，不该是常态——它会盖掉用户
+        自己调好的音量。
+        """
+        return bool(self.get("Force_System_Volume", False))
+
+    @property
+    def pause_queue_enabled(self) -> bool:
+        """暂停期间把消息积压起来，恢复监听时合并弹出。"""
+        return bool(self.get("Pause_Queue_Enabled", True))
+
+    @property
+    def pause_queue_max(self) -> int:
+        result = self.get("Pause_Queue_Max", 50)
+        return max(1, int(result)) if isinstance(result, (int, float)) else 50
+
+    @property
+    def show_ids_by_default(self) -> bool:
+        """默认就把群号/QQ 号摊开显示（默认关闭，点一下才显示）。"""
+        return bool(self.get("Show_IDs", False))
+
+    @property
     def notify_title_font(self) -> str:
         result = self.get("Notify_Title_Font", "asset/Font/JingNanBoBoHei-Bold-2.ttf")
         return str(result) if result else "asset/Font/JingNanBoBoHei-Bold-2.ttf"

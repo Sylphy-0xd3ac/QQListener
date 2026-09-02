@@ -111,23 +111,28 @@ def _resolve_user_profile_sync(client: ControlHookClient, user_id: str) -> UserP
     return parse_user_profile_response(reply.body)
 
 
+def resolve_profile_blocking(pid: int, user_id: str) -> UserProfileNames:
+    """同步查一次资料；给线程池用。"""
+    if not pid or not user_id:
+        return UserProfileNames()
+    transport = Win32NamedPipeTransport(control_pipe_name(pid))
+    client = ControlHookClient(transport)
+    try:
+        return _resolve_user_profile_sync(client, user_id)
+    finally:
+        client.close()
+
+
 async def resolve_user_profile(message: CapturedMessage) -> UserProfileNames:
     if not message.source_pid or not message.sender_id:
         return UserProfileNames()
 
-    transport = await asyncio.to_thread(
-        Win32NamedPipeTransport, control_pipe_name(message.source_pid)
-    )
-    client = ControlHookClient(transport)
     task = asyncio.create_task(
-        asyncio.to_thread(_resolve_user_profile_sync, client, message.sender_id)
+        asyncio.to_thread(resolve_profile_blocking, message.source_pid, message.sender_id)
     )
     try:
         return await asyncio.wait_for(asyncio.shield(task), timeout=3.0)
     except TimeoutError:
-        client.close()
         with contextlib.suppress(Exception):
             await asyncio.wait_for(task, timeout=1.0)
         return UserProfileNames()
-    finally:
-        client.close()

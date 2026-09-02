@@ -2,8 +2,41 @@ import hashlib
 import time
 
 from src.core.settings import get_settings
-from src.native.model import CapturedMessage, message_text
+from src.native.model import CapturedMessage, Segment, message_text, quoted_message, segments_text
+from src.utils.downloads import is_image_name, is_video_name
 from src.utils.media import file_icon_for_path
+
+
+def segment_payload(seg: Segment) -> dict:
+    """把 Segment 压成通知层可用的纯 dict（UI 不依赖 native 模型）。"""
+    kind = seg.type
+    name = seg.name or ""
+    if kind == "file" and name:
+        # 群/私聊文件里混着图片和视频，按扩展名分流到对应渲染器。
+        if is_image_name(name):
+            kind = "image"
+        elif is_video_name(name):
+            kind = "video"
+    payload = {
+        "type": kind,
+        "text": seg.text,
+        "url": seg.url,
+        "name": name,
+        "md5": seg.md5,
+        "target_id": seg.target_id,
+        "size": int(seg.extra.get("size", 0) or 0),
+        "local_path": str(seg.extra.get("local_path", "") or ""),
+    }
+    if kind in {"file", "video"}:
+        payload["icon_file"] = file_icon_for_path(name)
+    if kind == "image":
+        payload["width"] = int(seg.extra.get("width", 0) or 0)
+        payload["height"] = int(seg.extra.get("height", 0) or 0)
+    return payload
+
+
+def segments_payload(segments: list[Segment]) -> list[dict]:
+    return [segment_payload(seg) for seg in segments if seg.type != "reply"]
 
 
 class MessageProcessor:
@@ -37,24 +70,42 @@ class MessageProcessor:
             return msg.peer_id in self._id_set(self.settings.whitelist_groups)
         return msg.peer_id in person_ids
 
-    def _captured_sender_label(self, msg: CapturedMessage) -> str:
+    @staticmethod
+    def display_name(msg: CapturedMessage) -> str:
+        """备注 > 群名片 > 昵称。"""
         if msg.scene == "group":
-            sender = (
-                msg.sender_remark
-                or msg.sender_group_card
-                or msg.sender_nickname
-                or msg.sender_name
-                or msg.sender_id
+            candidates = (
+                msg.sender_remark,
+                msg.sender_group_card,
+                msg.sender_nickname,
+                msg.sender_name,
             )
         else:
-            sender = msg.sender_remark or msg.sender_nickname or msg.sender_name or msg.sender_id
+            candidates = (msg.sender_remark, msg.sender_nickname, msg.sender_name)
+        for candidate in candidates:
+            if candidate:
+                return candidate
+        return msg.sender_id
 
-        qq_suffix = f" {msg.sender_id}" if msg.sender_id and sender != msg.sender_id else ""
-        if msg.scene == "group":
-            peer = msg.peer_name or msg.peer_id
-            group_suffix = f"（{peer}）" if peer else ""
-            return f"{sender}{group_suffix}{qq_suffix}"
-        return f"{sender}{qq_suffix}"
+    def _sender_label(self, msg: CapturedMessage) -> str:
+        """默认只显示名字与群名，不带号码。"""
+        name = self.display_name(msg)
+        if msg.scene != "group":
+            return name
+        peer = msg.peer_name or msg.peer_id
+        return f"{name}（{peer}）" if peer else name
+
+    @staticmethod
+    def _sender_detail(msg: CapturedMessage) -> str:
+        """点击发送者行才展开的号码信息。"""
+        parts: list[str] = []
+        if msg.scene == "group" and msg.peer_id:
+            parts.append(f"群号: {msg.peer_id}")
+        if msg.sender_id:
+            parts.append(f"发送者QQ号: {msg.sender_id}")
+        elif msg.scene != "group" and msg.peer_id:
+            parts.append(f"QQ号: {msg.peer_id}")
+        return "　".join(parts)
 
     def _captured_mentions_me(self, msg: CapturedMessage) -> bool:
         user_qq = str(self.settings.get("User_QQ", "") or "").strip()
@@ -65,18 +116,36 @@ class MessageProcessor:
                 return True
         return False
 
+    @staticmethod
+    def _quote_payload(msg: CapturedMessage) -> dict | None:
+        quoted = quoted_message(msg)
+        if quoted is None:
+            return None
+        body = segments_text(quoted.segments)
+        if not body and not quoted.sender_id:
+            return None
+        return {
+            "sender": quoted.sender_name or quoted.sender_id or "对方",
+            "detail": f"QQ号: {quoted.sender_id}" if quoted.sender_id else "",
+            "text": body,
+            "segments": segments_payload(quoted.segments),
+        }
+
     def process_captured(
         self,
         msg: CapturedMessage,
         image_path: str | None = None,
         file_path: str | None = None,
+        reply_route: dict | None = None,
     ) -> dict | None:
         body = message_text(msg)
-        file_seg = next((s for s in msg.segments if s.type == "file"), None)
-        if not body and not image_path and not file_path and file_seg is None:
+        quote = self._quote_payload(msg)
+        segments = segments_payload(msg.segments)
+        has_media = any(seg["type"] != "text" for seg in segments)
+        if not body and not has_media and not image_path and not file_path and quote is None:
             return None
 
-        sender_label = self._captured_sender_label(msg)
+        sender_label = self._sender_label(msg)
         key_data = f"{msg.scene}|{msg.peer_id}|{msg.sender_id}|{body}|{msg.raw_seq}"
         key = hashlib.md5(key_data.encode()).hexdigest()
         now = time.time()
@@ -112,22 +181,110 @@ class MessageProcessor:
                 duration = self.settings.duration_important
                 important = True
 
+        detail = self._sender_detail(msg)
         notify_data = {
+            # 单条消息的老字段保留：测试通知、旧调用方还在用。
             "Sender": sender_label,
+            "Sender_Detail": detail,
             "Message": body,
+            "Segments": segments,
+            "Quote": quote,
+            # 通知窗口真正渲染的是这个列表；积压摘要会把多条拼进来。
+            "Messages": [
+                {
+                    "sender": sender_label,
+                    "detail": detail,
+                    "text": body,
+                    "segments": segments,
+                    "quote": quote,
+                }
+            ],
+            "Reply": reply_route or {},
             "Duration": duration,
             "Priority": 0 if important else 1,
             "Calling": calling,
-            "icon_file": "asset/pdf.png",
         }
         if image_path:
             notify_data["Pic_Path"] = image_path
         if file_path:
             notify_data["file_target"] = file_path
-        if file_seg is not None:
-            notify_data["file_name"] = file_seg.name or "QQ 文件"
-            if not notify_data.get("file_target") and file_seg.url:
-                notify_data["file_target"] = file_seg.url
-            icon_ref = file_seg.name or file_path or ""
-            notify_data["icon_file"] = file_icon_for_path(icon_ref)
         return notify_data
+
+
+# 摘要窗口最多念几条，剩下的只报数——不然暂停一小时能念到天亮。
+_DIGEST_TTS_LIMIT = 3
+
+
+def digest_entries(payload: dict) -> list[dict]:
+    """从通知载荷里取出消息列表；老载荷（只有 Sender/Segments）也能兼容。"""
+    messages = payload.get("Messages")
+    if isinstance(messages, list) and messages:
+        return list(messages)
+    return [
+        {
+            "sender": payload.get("Sender", ""),
+            "detail": payload.get("Sender_Detail", ""),
+            "text": payload.get("Message", ""),
+            "segments": list(payload.get("Segments") or []),
+            "quote": payload.get("Quote"),
+        }
+    ]
+
+
+def _digest_tts_text(entries: list[dict], dropped: int) -> str:
+    head = f"暂停期间收到{len(entries)}条消息。"
+    spoken = [
+        f"{entry.get('sender', '')}：{entry.get('text', '')}".strip("：")
+        for entry in entries[:_DIGEST_TTS_LIMIT]
+        if entry.get("text") or entry.get("sender")
+    ]
+    tail = (
+        f"另有{len(entries) - _DIGEST_TTS_LIMIT}条未念。"
+        if len(entries) > _DIGEST_TTS_LIMIT
+        else ""
+    )
+    overflow = f"更早的{dropped}条已超出上限。" if dropped else ""
+    return head + "".join(f"{line}。" for line in spoken) + tail + overflow
+
+
+def _priority_of(payload: dict) -> int:
+    value = payload.get("Priority")
+    return int(value) if isinstance(value, (int, float)) else 2
+
+
+def build_digest_payload(payloads: list[dict], dropped: int = 0) -> dict | None:
+    """把积压的多条通知合成一个摘要窗口的载荷。"""
+    if not payloads:
+        return None
+
+    entries: list[dict] = []
+    for payload in payloads:
+        entries.extend(digest_entries(payload))
+    if not entries:
+        return None
+
+    if len(entries) == 1 and not dropped:
+        return payloads[0]
+
+    title = f"暂停期间的 {len(entries)} 条消息"
+    if dropped:
+        title += f"（更早的 {dropped} 条已丢弃）"
+
+    return {
+        "Sender": title,
+        "Sender_Detail": "",
+        "Message": "\n".join(
+            f"{entry.get('sender', '')}: {entry.get('text', '')}" for entry in entries
+        ),
+        "TTS_Text": _digest_tts_text(entries, dropped),
+        "Segments": [],
+        "Quote": None,
+        "Messages": entries,
+        # 回复目标取最后一条：摘要里的消息可能跨会话，窗口会把目标明写出来。
+        "Reply": payloads[-1].get("Reply") or {},
+        "Duration": max(int(p.get("Duration", 0) or 0) for p in payloads),
+        # 注意别写成 `p.get("Priority", 2) or 2`：重要消息的 Priority 是 0，会被吞掉。
+        "Priority": min(_priority_of(p) for p in payloads),
+        "Calling": any(bool(p.get("Calling")) for p in payloads),
+        "Digest": True,
+    }

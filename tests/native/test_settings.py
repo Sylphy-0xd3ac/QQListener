@@ -61,3 +61,52 @@ def test_settings_expose_exact_id_rule_lists(tmp_path):
 
     Settings._instance = None
     Settings._initialized = False
+
+
+def test_log_level_defaults_to_info_and_normalizes():
+    from src.core.logging import LOG_LEVELS, normalize_level
+
+    assert normalize_level("debug") == "DEBUG"
+    assert normalize_level("  Warning ") == "WARNING"
+    assert normalize_level("胡说") == "INFO"
+    assert normalize_level(None) == "INFO"
+    assert "TRACE" in LOG_LEVELS and "ERROR" in LOG_LEVELS
+
+
+def test_log_file_lives_under_the_app_root_not_temp():
+    from src.core.logging import log_file_path
+    from src.core.resources import app_root
+
+    path = log_file_path()
+    assert path.parent == app_root() / "logs"
+    assert path.name == "QQListener.log"
+
+
+def test_read_log_tail_handles_a_missing_file(tmp_path, monkeypatch):
+    from src.core import logging as log_module
+
+    monkeypatch.setattr(log_module, "log_file_path", lambda: tmp_path / "nope.log")
+    assert "还没有日志文件" in log_module.read_log_tail()
+
+
+def test_read_log_tail_returns_only_the_last_lines(tmp_path, monkeypatch):
+    from src.core import logging as log_module
+
+    target = tmp_path / "QQListener.log"
+    target.write_text("\n".join(f"line {i}" for i in range(100)), encoding="utf-8")
+    monkeypatch.setattr(log_module, "log_file_path", lambda: target)
+
+    tail = log_module.read_log_tail(5)
+
+    assert tail.splitlines() == [f"line {i}" for i in range(95, 100)]
+
+
+def test_clear_log_empties_the_file(tmp_path, monkeypatch):
+    from src.core import logging as log_module
+
+    target = tmp_path / "QQListener.log"
+    target.write_text("旧日志", encoding="utf-8")
+    monkeypatch.setattr(log_module, "log_file_path", lambda: target)
+
+    assert log_module.clear_log() is True
+    assert target.read_text(encoding="utf-8") == ""
