@@ -224,6 +224,26 @@ NT 图片走 `CommonElem(serviceType=48, businessType=10/20)`，地址由
 EdgeTTS 不是本地引擎：`edge_tts` 是微软 Edge「大声朗读」那套在线服务的客户端，
 会开 WebSocket 到微软的语音端点取合成音频。所以它必然要联网，也必然受校园网影响。
 
+### 后台线程与"没有 traceback 的崩溃"
+
+**正在运行的 QThread 必须一直有人持有，而且不能 parent 到会先被销毁的控件上。**
+最后一个引用消失时 Python GC 会析构它，C++ 侧发现线程还在跑就直接
+`qFatal("QThread: Destroyed while thread is still running")` —— 进程 abort，
+不经过 Python，日志里一个 traceback 都没有（实测退出码 139/SIGSEGV）。
+
+所以 `TTSThread` / `ReplyTask` / `DownloadTask` 一律**不设 parent**，改为
+`src/utils/qt_tasks.py::keep_alive()` 登记，线程 `finished` 时自己注销。
+这条尤其容易在"不阻塞 UI"的改动里被破坏：`stop()` 里把引用置 None 放生的写法，
+必须配合 keep_alive 才成立。
+
+崩溃可见性由 `src/core/crash_handler.py` 兜底，三个来源各需单独接管：
+
+1. Qt 槽函数里未捕获的 Python 异常 → `sys.excepthook`（PySide6 走完它就终止进程）
+2. 子线程里的异常 → `threading.excepthook`（和主线程那个不是一回事）
+3. Qt 自身的致命错误 → `qInstallMessageHandler`（在 C++ 侧 abort，**根本不经过 Python**）
+
+GUI 模式（`--windowed`）下 stderr 是 None，不接管这三处就等于什么都看不到。
+
 ## 开发与验证
 
 ```bash

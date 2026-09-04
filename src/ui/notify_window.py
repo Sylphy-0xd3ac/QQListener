@@ -36,6 +36,7 @@ from src.ui.qt_compat import (
 )
 from src.utils.media import is_http_url, local_path_from_ref
 from src.utils.message_processor import digest_entries
+from src.utils.qt_tasks import keep_alive
 from src.utils.tts import TTSManager
 
 CARD_WIDTH = 600
@@ -684,7 +685,9 @@ class NotifyWindow(QWidget):
         self.btn_send.setText("发送中")
         self.reply_status.hide()
 
-        task = ReplyTask(route, text, self)
+        # 不 parent 到窗口：发完就关窗，窗口析构会带走还在收尾的线程 → abort。
+        task = ReplyTask(route, text)
+        keep_alive(task)
         task.succeeded.connect(self._on_reply_sent)
         task.failed.connect(self._show_reply_error)
         task.finished.connect(self._clear_reply_task)

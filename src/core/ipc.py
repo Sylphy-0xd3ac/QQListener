@@ -39,13 +39,16 @@ COMMANDS = (
 
 
 def server_name() -> str:
-    """同一台机器上多用户各用各的通道。"""
-    suffix = (
-        os.environ.get("USERNAME")
-        or os.environ.get("USER")
-        or str(os.getuid() if hasattr(os, "getuid") else "")
-    )
-    return f"{SERVER_NAME}.{suffix}" if suffix else SERVER_NAME
+    """同一台机器上多用户各用各的通道。
+
+    用户名会原样拼进 Windows 命名管道 / Unix socket 路径，中文名、空格、点号都
+    可能出现，所以只保留 ASCII 字母数字，其余折成下划线；全被折掉就退回不带后缀。
+    """
+    raw = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+    if not raw and hasattr(os, "getuid"):
+        raw = str(os.getuid())
+    suffix = "".join(ch if ch.isascii() and ch.isalnum() else "_" for ch in raw).strip("_")
+    return f"{SERVER_NAME}.{suffix[:32]}" if suffix else SERVER_NAME
 
 
 def encode_request(command: str, **params) -> bytes:
@@ -94,7 +97,11 @@ class ControlServer(QObject):
         if self._server.listen(name):
             logger.info("控制通道已就绪（已清理上次残留）: {}", name)
             return True
-        logger.warning("控制通道监听失败: {}", self._server.errorString())
+        logger.warning(
+            "控制通道监听失败（命令行子命令将不可用）: name={} error={}",
+            name,
+            self._server.errorString(),
+        )
         return False
 
     def close(self) -> None:

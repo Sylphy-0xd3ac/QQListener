@@ -14,6 +14,7 @@ from loguru import logger
 
 from src.core.settings import get_settings
 from src.ui.qt_compat import QObject, QThread, QTimer, Signal
+from src.utils.qt_tasks import keep_alive
 
 # EdgeTTS 要连微软的服务器。校园网慢/被挡时这一步能卡很久，卡住期间通知不会
 # 自动关闭、下一条通知还会等它——所以必须有超时。
@@ -269,6 +270,9 @@ class TTSManager(QObject):
         self._active = True
         self.started.emit()
         self._current_thread = TTSThread(text)
+        # 不设 parent：TTSManager 挂在通知窗口上，窗口先关就会连着还在跑的线程一起析构。
+        # 存活交给 keep_alive 登记，线程跑完自己注销。
+        keep_alive(self._current_thread)
         self._current_thread.finished_signal.connect(self._on_tts_ready)
         self._current_thread.finished.connect(self._on_thread_finished)
         self._current_thread.finished.connect(self._current_thread.deleteLater)
@@ -334,6 +338,8 @@ class TTSManager(QObject):
         # 旧线程可能正卡在 EdgeTTS 的网络调用里，quit() 打断不了它。
         # 这里绝不能 wait()——每来一条新通知就冻结 UI 一秒。改成"断信号后放生"，
         # 它跑完自己会 deleteLater。
+        # 注意：放生前它必须已经登记在 keep_alive 里，否则这里一置 None 就没人持有，
+        # GC 析构一个还在跑的 QThread = 进程 abort（且没有 Python traceback）。
         thread = self._current_thread
         if thread is not None and thread.isRunning():
             with contextlib.suppress(RuntimeError, TypeError):

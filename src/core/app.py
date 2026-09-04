@@ -23,6 +23,7 @@ from src.core.core_controller import (
 )
 from src.core.core_runtime import get_core_runtime
 from src.core.core_service import CoreService
+from src.core.crash_handler import install_crash_logging
 from src.core.ipc import ControlServer, send_command
 from src.core.logging import setup_logging
 from src.core.pending_queue import clear_pending, drain_pending, pending_count
@@ -69,6 +70,7 @@ class QQListenerApp:
 
     def initialize(self) -> bool:
         setup_logging()
+        install_crash_logging()
         self._set_windows_app_user_model_id()
 
         try:
@@ -229,6 +231,9 @@ class QQListenerApp:
 
     def run(self, *, daemon: bool = True):
         self.daemon = daemon
+        # 先装日志与崩溃钩子：QApplication 创建期间出事也得留下记录。
+        setup_logging()
+        install_crash_logging()
         # QLocalServer/QLocalSocket 需要一个 Qt 应用对象；单实例检查也要用它，
         # 所以先建 app，再决定这一次到底是"启动"还是"唤起已有实例"。
         self.app = QApplication.instance() or QApplication(sys.argv)

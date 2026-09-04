@@ -32,6 +32,7 @@ from src.ui.qt_compat import (
     Signal,
 )
 from src.utils.downloads import download_to, resolve_download_dir
+from src.utils.qt_tasks import keep_alive
 
 MAX_IMAGE_WIDTH = 460
 MAX_IMAGE_HEIGHT = 280
@@ -160,7 +161,9 @@ class _DownloadMixin:
     def start_download(self):
         if self._task is not None or not self._url:
             return
-        task = DownloadTask(self._url, self._download_dir(), self._name, self)
+        # 同样不 parent 到卡片：通知关掉时下载可能还在跑。
+        task = DownloadTask(self._url, self._download_dir(), self._name)
+        keep_alive(task)
         task.progressed.connect(self.on_download_progress)
         task.completed.connect(self._on_download_completed)
         task.failed.connect(self.on_download_failed)
