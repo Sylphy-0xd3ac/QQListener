@@ -6,7 +6,7 @@ from loguru import logger
 
 from src.core.core_controller import CoreState, get_core_state
 from src.core.core_runtime import CoreRuntimeState, set_core_runtime
-from src.core.pending_queue import push_pending
+from src.core.pending_queue import pending_count, push_pending
 from src.core.settings import get_settings
 from src.core.signals import get_signals
 from src.native.capture import RecvCapture, enumerate_qq_pids
@@ -64,14 +64,17 @@ class NotificationWorker(QThread):
         """RUNNING 与 PAUSED 都读管道（暂停只是不弹窗，消息进积压队列）；
         DETACHED 才真正停下。QQ 未开/管道未通时退避重试。"""
         while self._running:
-            if get_core_state() == CoreState.DETACHED:
+            state = get_core_state()
+            if state == CoreState.DETACHED:
                 await asyncio.sleep(_STATE_POLL_S)
                 continue
+            if state == CoreState.PAUSED:
+                self._publish_paused()
 
             pids = enumerate_qq_pids()
             if not pids:
-                set_core_runtime(CoreRuntimeState.NO_QQ, "未找到正在运行的 QQ 主进程")
-                await asyncio.sleep(_NO_QQ_BACKOFF_S)
+                self._publish_runtime(CoreRuntimeState.NO_QQ, "未找到正在运行的 QQ 主进程")
+                await self._sleep_or_state_change(_NO_QQ_BACKOFF_S)
                 continue
 
             pid = pids[0]
@@ -81,42 +84,81 @@ class NotificationWorker(QThread):
                 on_connected=lambda pid=pid: self._on_capture_connected(pid),
                 on_disconnected=lambda pid=pid: self._on_capture_disconnected(pid),
             )
-            watcher = asyncio.create_task(self._watch_core_state(cap))
+            watcher = asyncio.create_task(self._watch_core_state(cap, pid))
             try:
                 await cap.run()
             except Exception:
                 logger.debug("原生捕获中断（QQ 未注入/管道不可用）", exc_info=True)
-                if get_core_state() != CoreState.DETACHED:
-                    set_core_runtime(
-                        CoreRuntimeState.WAITING,
-                        "核心尚未提供接收管道，正在重试",
-                        pid,
-                    )
-                await asyncio.sleep(_ERROR_BACKOFF_S)
+                self._publish_runtime(
+                    CoreRuntimeState.WAITING,
+                    "核心尚未提供接收管道，正在重试",
+                    pid,
+                )
+                await self._sleep_or_state_change(_ERROR_BACKOFF_S)
             finally:
                 watcher.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await watcher
 
     @staticmethod
+    def _publish_runtime(state: CoreRuntimeState, detail: str, pid: int = 0) -> None:
+        """只有 RUNNING 时才上报运行态。
+
+        暂停时捕获仍在跑（积压要用），但绝不能再写运行态——否则会和
+        core_service 抢着写同一份快照，UI 就在"已暂停"和"接收管道已连接"
+        之间来回跳。
+        """
+        if get_core_state() == CoreState.RUNNING:
+            set_core_runtime(state, detail, pid)
+
+    @staticmethod
+    def _publish_paused(pid: int = 0) -> None:
+        """暂停态由 worker 统一发布：只有它知道积压了多少条。"""
+        queued = pending_count()
+        detail = (
+            f"监听已暂停，已积压 {queued} 条消息" if queued else "监听已暂停，核心仍保留在 QQ 中"
+        )
+        set_core_runtime(CoreRuntimeState.PAUSED, detail, pid)
+
+    @staticmethod
     def _on_capture_connected(pid: int) -> None:
         logger.info("接收管道已连接: pid={}", pid)
-        set_core_runtime(CoreRuntimeState.CONNECTED, "接收管道已连接，正在监听消息", pid)
+        NotificationWorker._publish_runtime(
+            CoreRuntimeState.CONNECTED, "接收管道已连接，正在监听消息", pid
+        )
 
     @staticmethod
     def _on_capture_disconnected(pid: int) -> None:
-        if get_core_state() != CoreState.DETACHED:
-            set_core_runtime(CoreRuntimeState.WAITING, "接收管道已断开，正在重连", pid)
+        NotificationWorker._publish_runtime(
+            CoreRuntimeState.WAITING, "接收管道已断开，正在重连", pid
+        )
 
-    async def _watch_core_state(self, cap: RecvCapture):
+    async def _watch_core_state(self, cap: RecvCapture, pid: int = 0):
         """核心被卸载（DETACHED）或线程停止时，停掉当前捕获会话。
 
         暂停不停会话——不然积压就无从谈起，而且恢复时还要重连管道。
         """
         while True:
             await asyncio.sleep(_STATE_POLL_S)
-            if not self._running or get_core_state() == CoreState.DETACHED:
+            state = get_core_state()
+            if not self._running or state == CoreState.DETACHED:
                 cap.stop()
+                return
+            if state == CoreState.PAUSED:
+                # 会话还连着，但界面要显示"已暂停 + 积压条数"。
+                self._publish_paused(pid)
+
+    async def _sleep_or_state_change(self, seconds: float) -> None:
+        """退避等待期间核心状态一变就立刻醒。
+
+        否则发完 pause/start 后界面要等满一个退避周期才更新，用起来像"指令没生效"。
+        """
+        started = get_core_state()
+        remaining = seconds
+        while remaining > 0 and self._running:
+            await asyncio.sleep(min(_STATE_POLL_S, remaining))
+            remaining -= _STATE_POLL_S
+            if get_core_state() != started:
                 return
 
     def _on_captured(self, msg: CapturedMessage):

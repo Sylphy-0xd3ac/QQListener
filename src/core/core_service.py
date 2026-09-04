@@ -150,7 +150,8 @@ class CoreService:
             set_core_runtime(CoreRuntimeState.DETACHED, "核心已卸载")
             return
         if target_state == CoreState.PAUSED:
-            set_core_runtime(CoreRuntimeState.PAUSED, "监听已暂停，核心仍保留在 QQ 中")
+            # 暂停态由 worker 统一发布（它知道积压了多少条）；两边都写会互相覆盖，
+            # 界面就在"已暂停"和"接收管道已连接"之间来回跳。
             return
 
         if not current_pids:

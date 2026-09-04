@@ -67,6 +67,18 @@ CapturedMessage
 `build_digest_payload()` 合成一个摘要载荷再弹窗。状态可能由后台线程切换，所以用
 `QTimer.singleShot(0, ...)` 回主线程建窗口。
 
+**运行态快照只能有一个写入方。** 暂停时捕获仍在跑，worker 却不能再写
+`CoreRuntimeState`——它会和 `core_service` 抢着写同一份快照，界面就在"已暂停"和
+"接收管道已连接/未找到 QQ"之间来回跳。约定：
+
+- `worker._publish_runtime()` 只在 `RUNNING` 时才落笔
+- 暂停态统一由 `worker._publish_paused()` 发布（只有它知道积压了多少条），
+  `core_service.reconcile()` 遇到 `PAUSED` 直接返回、不碰快照
+
+另外退避等待要用 `worker._sleep_or_state_change()`，状态一变立刻醒；用裸
+`asyncio.sleep()` 的话，发完 pause/start 要等满一个退避周期界面才更新，
+用起来像"指令没生效"。
+
 ## 主要目录
 
 ```text
