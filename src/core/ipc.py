@@ -83,20 +83,27 @@ class ControlServer(QObject):
 
     def listen(self) -> bool:
         name = server_name()
-        if self._server.listen(name):
-            logger.info("控制通道已就绪: {}", name)
-            return True
 
-        # 名字被占。先探一探对面是不是活的：活的就说明已有实例，
-        # 死的（上次崩溃留下的 socket 文件）才能清掉重来。
+        # 先探活，再监听。不能用 "listen() 失败" 判断是否已有实例——Qt 文档明确写着：
+        # Windows 上两个 QLocalServer 可以同时监听同一个管道名，连接会随机落到其中
+        # 一个。也就是说 Windows 上 listen() 永远成功，单实例判断会失效，最后跑起
+        # 两份守护进程，指令随机打到其中一份，表现就是"指令时灵时不灵"。
         if is_running():
             self.other_instance = True
+            logger.info("已有 QQListener 实例占用控制通道: {}", name)
             return False
 
+        if self._server.listen(name):
+            logger.info("控制通道已就绪: {} (pid={})", name, os.getpid())
+            return True
+
+        # Unix 上崩溃残留的 socket 文件会让 listen() 报 AddressInUseError；
+        # 上面已经确认没有活的实例，可以安全清掉重来。
         QtNetwork.QLocalServer.removeServer(name)
         if self._server.listen(name):
-            logger.info("控制通道已就绪（已清理上次残留）: {}", name)
+            logger.info("控制通道已就绪（已清理上次残留）: {} (pid={})", name, os.getpid())
             return True
+
         logger.warning(
             "控制通道监听失败（命令行子命令将不可用）: name={} error={}",
             name,
@@ -108,20 +115,38 @@ class ControlServer(QObject):
         self._server.close()
         QtNetwork.QLocalServer.removeServer(server_name())
 
+    def _guarded(self, what: str, fn, *args) -> None:
+        """Qt 槽里的异常在 PySide6 里会直接终止进程，一条也不能漏出去。
+
+        管道对端随时可能消失（客户端超时退出、进程被杀），write/flush 在
+        Windows 上都会抛——那不该带走整个守护进程。
+        """
+        try:
+            fn(*args)
+        except Exception:
+            logger.exception("控制通道 {} 失败", what)
+
     def _on_connection(self):
+        self._guarded("接受连接", self._accept_connections)
+
+    def _accept_connections(self):
         while self._server.hasPendingConnections():
             socket = self._server.nextPendingConnection()
             if socket is None:
                 continue
             self._buffers[socket] = bytearray()
-            socket.readyRead.connect(lambda s=socket: self._on_ready_read(s))
-            socket.disconnected.connect(lambda s=socket: self._on_disconnected(s))
+            socket.readyRead.connect(
+                lambda s=socket: self._guarded("读取请求", self._read_request, s)
+            )
+            socket.disconnected.connect(
+                lambda s=socket: self._guarded("断开连接", self._drop_socket, s)
+            )
 
-    def _on_disconnected(self, socket):
+    def _drop_socket(self, socket):
         self._buffers.pop(socket, None)
         socket.deleteLater()
 
-    def _on_ready_read(self, socket):
+    def _read_request(self, socket):
         buffer = self._buffers.get(socket)
         if buffer is None:
             return
@@ -153,8 +178,17 @@ class ControlServer(QObject):
 
     @staticmethod
     def _respond(socket, payload: dict):
+        # 对端可能已经走了；写不出去就算了，绝不能让异常冒出槽函数。
+        if socket.state() != QtNetwork.QLocalSocket.LocalSocketState.ConnectedState:
+            logger.debug("控制通道对端已断开，丢弃响应")
+            return
         socket.write(encode_response(payload))
         socket.flush()
+        # Windows 命名管道是异步写，不等它落地就断开，客户端可能什么都收不到。
+        # 但必须先看还有没有待写数据：缓冲已空时调 waitForBytesWritten() 会被 Qt
+        # 拒绝（"not allowed in UnconnectedState"），响应反而发不出去。
+        if socket.bytesToWrite():
+            socket.waitForBytesWritten(_TIMEOUT_MS)
         socket.disconnectFromServer()
 
 
@@ -169,11 +203,25 @@ def send_command(command: str, timeout_ms: int = _TIMEOUT_MS, **params) -> dict 
     try:
         socket.write(encode_request(command, **params))
         socket.flush()
+        # 子命令进程没有跑事件循环，flush() 只是"尽量写、不阻塞"。Windows 命名管道
+        # 上这一步是异步的，没写完就等它落地，否则请求可能根本没发出去——表现就是
+        # 超时后报"守护进程没有在运行"。缓冲已空时不能调，Qt 会拒绝。
+        if socket.bytesToWrite() and not socket.waitForBytesWritten(timeout_ms):
+            logger.debug("控制指令写入超时: {}", command)
+            return None
+
         buffer = bytearray()
         while b"\n" not in buffer:
+            if socket.bytesAvailable():
+                buffer.extend(bytes(socket.readAll()))
+                continue
             if not socket.waitForReadyRead(timeout_ms):
-                return None
-            buffer.extend(bytes(socket.readAll()))
+                # 对端可能已经写完并断开：waitForReadyRead 会返回 False，
+                # 但缓冲区里往往还躺着完整的响应。
+                buffer.extend(bytes(socket.readAll()))
+                break
+        if b"\n" not in buffer:
+            return None
         return decode_message(bytes(buffer).split(b"\n", 1)[0])
     finally:
         socket.disconnectFromServer()
