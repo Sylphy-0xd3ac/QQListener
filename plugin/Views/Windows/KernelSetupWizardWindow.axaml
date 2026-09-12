@@ -1,0 +1,110 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ci="http://classisland.tech/schemas/xaml/core"
+        x:Class="QQListener.Views.Windows.KernelSetupWizardWindow"
+        x:DataType="local:KernelSetupWizardWindow"
+        xmlns:local="clr-namespace:QQListener.Views.Windows"
+        Title="QQListener 原生捕获内核安装向导"
+        Width="520" Height="480"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Manual">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+
+        <!-- 步骤指示 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,16">
+            <TextBlock Text="1. 说明" FontWeight="{Binding WelcomeStepWeight}"
+                       Foreground="{Binding WelcomeStepBrush}" />
+            <TextBlock Text="›" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+            <TextBlock Text="2. 协议" FontWeight="{Binding EulaStepWeight}"
+                       Foreground="{Binding EulaStepBrush}" />
+            <TextBlock Text="›" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+            <TextBlock Text="3. 下载安装" FontWeight="{Binding DownloadStepWeight}"
+                       Foreground="{Binding DownloadStepBrush}" />
+            <TextBlock Text="›" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+            <TextBlock Text="4. 完成" FontWeight="{Binding DoneStepWeight}"
+                       Foreground="{Binding DoneStepBrush}" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="12">
+
+                <!-- Step 0: 说明 -->
+                <StackPanel Spacing="10" IsVisible="{Binding IsWelcomeStep}">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="原生捕获需要 SnowLuma 内核" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        QQListener 用 SnowLuma 的注入技术直接读取 QQ 的私有消息协议，
+                        不再轮询 Windows 通知中心的弹窗文本，能拿到图片、文件、引用、@ 等完整信息。
+                    </TextBlock>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        SnowLuma 内核是一个独立的专有二进制，本插件不打包、不分发它，
+                        只会在你同意协议后，从 SnowLuma 的官方 GitHub Release 下载安装。
+                        加速下载用的代理地址完全由你自己填，程序不内置、不自建镜像。
+                    </TextBlock>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               FontSize="12">
+                        仅支持 Windows x64；其余平台看不到这个向导。
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Step 1: 协议 -->
+                <StackPanel Spacing="10" IsVisible="{Binding IsEulaStep}">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="阅读并同意 SnowLuma 的协议" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Button Content="EULA" Command="{Binding Kernel.ViewLegalTextCommand}" CommandParameter="eula" />
+                        <Button Content="LICENSE" Command="{Binding Kernel.ViewLegalTextCommand}" CommandParameter="license" />
+                        <Button Content="隐私说明" Command="{Binding Kernel.ViewLegalTextCommand}" CommandParameter="privacy" />
+                    </StackPanel>
+                    <TextBox Text="{Binding Kernel.LegalText}"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             Height="180"
+                             Watermark="点上面的按钮从 SnowLuma 官方仓库拉取协议原文" />
+                    <CheckBox Content="我已阅读并同意 SnowLuma 的 EULA / LICENSE / 隐私说明"
+                              IsChecked="{Binding Kernel.EulaAccepted}" />
+                </StackPanel>
+
+                <!-- Step 2: 下载安装 -->
+                <StackPanel Spacing="10" IsVisible="{Binding IsDownloadStep}">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="下载并安装内核" />
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="8">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="当前版本" VerticalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Kernel.CurrentVersionText}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="最新版本" VerticalAlignment="Center" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Kernel.LatestVersionText}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                    <Button Content="检查更新" Command="{Binding Kernel.CheckUpdateCommand}"
+                            IsEnabled="{Binding Kernel.IsNotBusy}" />
+                    <TextBlock Text="下载加速代理（可选；留空直接访问官方地址）"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBox Text="{Binding Kernel.DownloadProxy}" Watermark="https://ghfast.top" />
+                    <Button Content="下载并安装" Command="{Binding Kernel.DownloadCommand}"
+                            IsEnabled="{Binding Kernel.IsNotBusy}" />
+                    <TextBlock Text="{Binding Kernel.StatusText}" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- Step 3: 完成 -->
+                <StackPanel Spacing="10" IsVisible="{Binding IsDoneStep}">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="完成" />
+                    <TextBlock Text="{Binding Kernel.RuntimeStateText}" TextWrapping="Wrap" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        内核就绪后，只要 QQ 在运行，QQListener 就会自动连接；这里的状态每秒刷新一次，
+                        不需要重启插件或宿主。
+                    </TextBlock>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,16,0,0">
+            <Button Grid.Column="0" Content="取消" Click="OnCancelClick" HorizontalAlignment="Left" />
+            <Button Grid.Column="1" Content="上一步" Click="OnBackClick" IsEnabled="{Binding CanGoBack}" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="下一步" Click="OnNextClick"
+                    IsEnabled="{Binding CanGoNext}" IsVisible="{Binding IsNotDoneStep}" Classes="accent" />
+            <Button Grid.Column="3" Content="完成" Click="OnFinishClick" IsVisible="{Binding IsDoneStep}" Classes="accent" />
+        </Grid>
+    </Grid>
+</Window>

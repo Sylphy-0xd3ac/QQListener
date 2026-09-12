@@ -1,0 +1,63 @@
+name: ClassIsland plugin checks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'plugin/**'
+      - '.github/workflows/plugin.yml'
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - '.github/workflows/plugin.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Plugin checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14]
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: plugin/global.json
+          cache: true
+          cache-dependency-path: 'plugin/**/packages.*.lock.json'
+
+      - name: Restore locked dependencies
+        run: dotnet restore QQListener.sln --locked-mode
+
+      - name: Build release
+        run: dotnet build QQListener.sln --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
+
+      - name: Run tests
+        run: dotnet test QQListener.sln --configuration Release --no-build --no-restore --results-directory artifacts/test-results --logger trx
+
+      - name: Verify toast samples
+        run: dotnet run --project Samples/QQListener.SampleVerifier/QQListener.SampleVerifier.csproj --configuration Release --no-build --no-restore
+
+      - name: Verify message UI
+        run: dotnet run --project Samples/QQListener.UiPreview/QQListener.UiPreview.csproj --configuration Release --no-build --no-restore -- --render artifacts/ui-previews
+
+      # Only offline checks and their evidence; the migration is not release-ready.
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-checks-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            plugin/artifacts/test-results/*.trx
+            plugin/artifacts/ui-previews/*.png
