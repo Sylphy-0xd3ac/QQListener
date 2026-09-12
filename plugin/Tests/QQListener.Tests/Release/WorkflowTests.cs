@@ -6,6 +6,8 @@ namespace QQListener.Tests.Release;
 
 public sealed class WorkflowTests
 {
+    private const string PackageCondition =
+        "runner.os == 'Windows' && github.event_name != 'pull_request'";
     private const string RestoreRun = "dotnet restore QQListener.sln --locked-mode";
     private const string BuildRun =
         "dotnet build QQListener.sln --configuration Release --no-restore -p:ContinuousIntegrationBuild=true";
@@ -82,7 +84,7 @@ public sealed class WorkflowTests
     }
 
     [Fact]
-    public void RepositoryWorkflowRunsBothPlatformsAndOnlyUploadsVerificationEvidence()
+    public void RepositoryWorkflowBuildsVerifiedWindowsPackageAfterCrossPlatformChecks()
     {
         var root = FindProjectRoot();
         var yaml = File.ReadAllText(Path.Combine(root, "..", ".github", "workflows", "plugin.yml"));
@@ -106,16 +108,36 @@ public sealed class WorkflowTests
         AssertStep(steps, "Verify toast samples", null, SamplesRun);
         AssertStep(steps, "Verify message UI", null,
             "dotnet run --project Samples/QQListener.UiPreview/QQListener.UiPreview.csproj --configuration Release --no-build --no-restore -- --render artifacts/ui-previews");
+        AssertStep(steps, "Verify branch metadata",
+            $"{PackageCondition} && github.ref_type != 'tag'", BranchMetadataRun);
+        AssertStep(steps, "Verify tagged metadata",
+            $"{PackageCondition} && github.ref_type == 'tag'", TaggedMetadataRun);
+        AssertStep(steps, "Build CIPX", PackageCondition, BuildCipxRun);
+        AssertStep(steps, "Verify clean install package",
+            $"{PackageCondition} && github.ref_type != 'tag'", BranchPackageRun);
+        AssertStep(steps, "Verify tagged clean install package",
+            $"{PackageCondition} && github.ref_type == 'tag'", TaggedPackageRun);
         AssertNamedStepsOrdered(steps, "Restore locked dependencies", "Build release", "Run tests",
-            "Verify toast samples", "Verify message UI", "Upload verification evidence");
-        var upload = Assert.Single(steps, s => s.Name == "Upload verification evidence");
-        Assert.Equal("always()", upload.Condition);
-        Assert.Equal("actions/upload-artifact@v4", upload.Uses);
+            "Verify toast samples", "Verify message UI", "Verify branch metadata", "Build CIPX",
+            "Verify clean install package", "Upload plugin package", "Upload verification evidence");
+        AssertNamedStepsOrdered(steps, "Restore locked dependencies", "Build release", "Run tests",
+            "Verify toast samples", "Verify message UI", "Verify tagged metadata", "Build CIPX",
+            "Verify tagged clean install package", "Upload plugin package", "Upload verification evidence");
+
+        var packageUpload = Assert.Single(steps, s => s.Name == "Upload plugin package");
+        Assert.Equal(PackageCondition, packageUpload.Condition);
+        Assert.Equal("actions/upload-artifact@v4", packageUpload.Uses);
+        var evidenceUpload = Assert.Single(steps, s => s.Name == "Upload verification evidence");
+        Assert.Equal("always()", evidenceUpload.Condition);
+        Assert.Equal("actions/upload-artifact@v4", evidenceUpload.Uses);
         Assert.Contains("global-json-file: plugin/global.json", yaml, StringComparison.Ordinal);
         Assert.Contains("cache-dependency-path: 'plugin/**/packages.*.lock.json'", yaml, StringComparison.Ordinal);
+        Assert.Contains("branches:\n      - main", yaml, StringComparison.Ordinal);
+        Assert.Contains("'[0-9]*.[0-9]*.[0-9]*.[0-9]*'", yaml, StringComparison.Ordinal);
+        Assert.Contains("plugin/cipx/QQListener.cipx", yaml, StringComparison.Ordinal);
+        Assert.Contains("plugin/cipx/checksums.md", yaml, StringComparison.Ordinal);
         Assert.Contains("plugin/artifacts/test-results/*.trx", yaml, StringComparison.Ordinal);
         Assert.Contains("plugin/artifacts/ui-previews/*.png", yaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("CreateCipx", yaml, StringComparison.Ordinal);
         Assert.DoesNotContain(".dll", yaml, StringComparison.Ordinal);
     }
 
