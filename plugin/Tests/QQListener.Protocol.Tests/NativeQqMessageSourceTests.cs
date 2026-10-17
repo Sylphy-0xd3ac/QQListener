@@ -57,10 +57,8 @@ public class NativeQqMessageSourceTests
         var transport = new FakeTransport([GroupPushFrame(seq: 1, text: "明天带作业")]);
         using var source = new NativeQqMessageSource(() => [7], _ => transport);
 
-        // 第一次 Poll 触发 Reconcile 起线程；消息到达是异步的，用第二次 Poll 有界重试着取。
-        await source.PollAsync(false, CancellationToken.None);
-
-        List<MessageEvent> events = [];
+        // 捕获线程可能在第一次 Poll 返回前送达；保留每次轮询的结果。
+        List<MessageEvent> events = [.. (await source.PollAsync(false, CancellationToken.None)).AcceptedEvents];
         Assert.True(WaitUntil(() =>
         {
             var result = source.PollAsync(false, CancellationToken.None).GetAwaiter().GetResult();
@@ -136,9 +134,7 @@ public class NativeQqMessageSourceTests
             () => [7], _ => transport,
             processEvent: evt => evt with { Body = "改写后" });
 
-        await source.PollAsync(false, CancellationToken.None);
-
-        List<MessageEvent> events = [];
+        List<MessageEvent> events = [.. (await source.PollAsync(false, CancellationToken.None)).AcceptedEvents];
         Assert.True(WaitUntil(() =>
         {
             var result = source.PollAsync(false, CancellationToken.None).GetAwaiter().GetResult();
