@@ -56,6 +56,7 @@ public sealed class CapturedMessage
     public IReadOnlyList<Segment> Segments { get; init; } = [];
 
     public bool IsGroup => Scene == "group";
+    public bool IsSelf => SelfUin != 0 && SenderId == SelfUin.ToString();
 }
 
 public static class MessageText

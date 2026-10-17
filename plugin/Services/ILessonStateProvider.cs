@@ -3,8 +3,7 @@ namespace QQListener.Services;
 /// <summary>
 /// 当前是不是正在上课。
 ///
-/// 单独抽一层而不是直接在规则引擎里拿 ClassIsland 的 <c>ILessonsService</c>：规则引擎
-/// 是纯逻辑、离线可测的，直接依赖宿主服务会把整套规则测试拖进 ClassIsland 的运行时。
+/// 通过独立接口读取宿主课表，让积压与课后延迟逻辑可以离线验证。
 /// </summary>
 public interface ILessonStateProvider
 {

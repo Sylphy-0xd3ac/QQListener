@@ -45,7 +45,7 @@ public static class SsoDecode
 
     public static CapturedMessage? DecodeMessagePush(RecvPacket packet)
     {
-        if (!MessagePushCmds.Contains(packet.Cmd)) return null;
+        if (packet.Error != 0 || !MessagePushCmds.Contains(packet.Cmd)) return null;
 
         var top = Wire.DecodeFields(packet.Body);
         var messageData = Wire.FieldBytes(top, FMessage);
@@ -69,9 +69,29 @@ public static class SsoDecode
         var group = groupData.Length > 0 ? Wire.DecodeFields(groupData) : [];
         var groupUin = Wire.FieldInt(group, FGroupUin);
         var msgType = Wire.FieldInt(content, FMsgType);
-        var isGroup = groupUin != 0 || msgType == 82;
+        // SnowLuma msg-push registry: only chat-message kinds, never notice/request events.
+        // 528/732 include private/group recall; a group routing header alone is not a message.
+        if (msgType is not (82 or 9 or 141 or 166 or 167 or 208 or 529)) return null;
+        var c2cCmd = Wire.FieldInt(content, 3);
+        if ((msgType is 141 or 166 or 167) && (c2cCmd is 1 or 73 or 75 or 129 or 131 or 133 or 135 or 192))
+            return null;
+        var isGroup = msgType == 82;
+        if (isGroup && groupUin == 0) return null;
+
+        var bodyFields = Wire.DecodeFields(bodyData);
+        var richData = Wire.FieldBytes(bodyFields, 1);
+        var extraData = Wire.FieldBytes(bodyFields, 2);
+        foreach (var (data, field) in new[] { (richData, 3), (extraData, 1) })
+        {
+            if (data.Length == 0) continue;
+            var fileData = Wire.FieldBytes(Wire.DecodeFields(data), field);
+            if (fileData.Length > 0 && Wire.FieldInt(Wire.DecodeFields(fileData), 12) == 2)
+                return null; // Offline-file download receipt, not a new file.
+        }
 
         var segments = RichText.ParseMessageBody(bodyData, isGroup);
+        if (!segments.Any(s => s.Type != "text" || !string.IsNullOrWhiteSpace(s.Text))) return null;
+        if (fromUin == 0 && string.IsNullOrWhiteSpace(fromUid)) return null;
 
         // 自己的数字账号——群聊分支之前没算这个，"有人 @ 我" 的判定得靠它跟
         // Segment("at").TargetId 比对，不是只有私聊方向判断需要。

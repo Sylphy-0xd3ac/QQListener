@@ -17,10 +17,10 @@ public class NativeQqMessageSourceTests
 {
     private const string PushCmd = "trpc.msg.olpush.OlPushService.MsgPush";
 
-    private static byte[] GroupPushFrame(ulong seq, string text)
+    private static byte[] GroupPushFrame(ulong seq, string text, ulong sender = 1001)
     {
         var group = Pb.Cat(Pb.VarintField(1, 123456), Pb.LenField(7, "高三2班"));
-        var responseHead = Pb.Cat(Pb.VarintField(1, 1001), Pb.LenField(8, group));
+        var responseHead = Pb.Cat(Pb.VarintField(1, sender), Pb.LenField(8, group));
         var contentHead = Pb.Cat(Pb.VarintField(1, 82), Pb.VarintField(5, seq));
         var body = Pb.LenField(1, Pb.Rich(Pb.TextElem(text)));
         var message = Pb.Cat(Pb.LenField(1, responseHead), Pb.LenField(2, contentHead), Pb.LenField(3, body));
@@ -255,6 +255,148 @@ public class NativeQqMessageSourceTests
         await source.WaitForMessagesAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(source.WaitForMessagesAsync(CancellationToken.None).IsCompleted);
+    }
+
+    private sealed class FeedTransport : IPipeTransport
+    {
+        private readonly BlockingCollection<byte[]> _chunks = new();
+        public int ReadCalls;
+        public void Push(byte[] frame) => _chunks.Add(frame);
+        public int Read(Span<byte> buffer)
+        {
+            Interlocked.Increment(ref ReadCalls);
+            if (!_chunks.TryTake(out var frame, Timeout.Infinite)) return 0;
+            frame.AsSpan().CopyTo(buffer);
+            return frame.Length;
+        }
+        public void Write(ReadOnlySpan<byte> data) { }
+        public void Dispose() => _chunks.CompleteAdding();
+    }
+
+    private static async Task Deliver(NativeQqMessageSource source, FeedTransport transport, ulong seq, string text)
+    {
+        var arrival = source.WaitForMessagesAsync(CancellationToken.None);
+        transport.Push(GroupPushFrame(seq, text));
+        await arrival.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task MessagesDuringAfterClassDelayJoinTheSameDigest()
+    {
+        var clock = new Clock();
+        var onClass = true;
+        var transport = new FeedTransport();
+        using var source = new NativeQqMessageSource(() => [7], _ => transport,
+            isOnClass: () => onClass, getAfterClassDelaySeconds: () => 60, timeProvider: clock);
+        await source.PollAsync(false, CancellationToken.None);
+        await Deliver(source, transport, 1, "上课收到");
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        onClass = false;
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        clock.Advance(30);
+        await Deliver(source, transport, 2, "拖堂期间收到");
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        clock.Advance(30);
+        var digest = Assert.Single((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        Assert.Equal(["上课收到", "拖堂期间收到"], digest.PendingMessages.Select(m => m.Body));
+    }
+
+    [Fact]
+    public async Task MessagesReceivedBeforePauseStayBeforeMessagesReceivedDuringPause()
+    {
+        var paused = false;
+        var transport = new FeedTransport();
+        using var source = new NativeQqMessageSource(() => [7], _ => transport,
+            getCoreState: () => paused ? CoreState.Paused : CoreState.Running);
+        source.Reconcile();
+        await Deliver(source, transport, 1, "暂停前");
+        paused = true;
+        // The first message is still in the ready queue. A third read proves both
+        // capture callbacks completed, without consuming that queue.
+        transport.Push(GroupPushFrame(2, "暂停中"));
+        Assert.True(WaitUntil(() => Volatile.Read(ref transport.ReadCalls) >= 3));
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        paused = false;
+        var digest = Assert.Single((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        Assert.Equal(["暂停前", "暂停中"], digest.PendingMessages.Select(m => m.Body));
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.FromUnixTimeSeconds(1700000000);
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(int seconds) => _now = _now.AddSeconds(seconds);
+    }
+
+    [Fact]
+    public async Task ClassBacklogWaitsThroughDelayAndTheNextClassRestartsTheDelay()
+    {
+        var clock = new Clock();
+        var onClass = true;
+        var state = CoreState.Running;
+        var completed = new TaskCompletionSource();
+        var transport = new FakeTransport([GroupPushFrame(1, "作业"), GroupPushFrame(2, "通知")]);
+        IReadOnlyList<int> active = [7];
+        using var source = new NativeQqMessageSource(() => active, _ => transport,
+            onCaptureDisconnected: _ => completed.TrySetResult(), getCoreState: () => state,
+            isOnClass: () => onClass, getAfterClassDelaySeconds: () => 60, timeProvider: clock);
+        await source.PollAsync(false, CancellationToken.None);
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        active = [];
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        onClass = false;
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        clock.Advance(59);
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        onClass = true;
+        await source.PollAsync(false, CancellationToken.None);
+        clock.Advance(120);
+        onClass = false;
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        clock.Advance(60);
+        state = CoreState.Paused;
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        state = CoreState.Running;
+        var digest = Assert.Single((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+        Assert.Equal(["作业", "通知"], digest.PendingMessages.Select(m => m.Body));
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+    }
+
+    [Fact]
+    public async Task DetachClearsClassBacklogAndPendingDelay()
+    {
+        var onClass = true;
+        var state = CoreState.Running;
+        var completed = new TaskCompletionSource();
+        var transport = new FakeTransport([GroupPushFrame(1, "积压")]);
+        IReadOnlyList<int> active = [7];
+        using var source = new NativeQqMessageSource(() => active, _ => transport,
+            onCaptureDisconnected: _ => completed.TrySetResult(), getCoreState: () => state,
+            isOnClass: () => onClass, getAfterClassDelaySeconds: () => 60);
+        await source.PollAsync(false, CancellationToken.None);
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        active = [];
+        state = CoreState.Detached;
+        await source.PollAsync(false, CancellationToken.None);
+        onClass = false;
+        state = CoreState.Running;
+        Assert.Empty((await source.PollAsync(false, CancellationToken.None)).AcceptedEvents);
+    }
+
+    [Theory]
+    [InlineData(true, 0)] [InlineData(false, 1)]
+    public async Task SelfEchoIsExcludedByDefaultAndCanBeEnabled(bool exclude, int expected)
+    {
+        var completed = new TaskCompletionSource();
+        var transport = new FakeTransport([GroupPushFrame(1, "自己发的", sender: 10000)]);
+        IReadOnlyList<int> active = [7];
+        using var source = new NativeQqMessageSource(() => active, _ => transport,
+            onCaptureDisconnected: _ => completed.TrySetResult(), excludeSelfMessages: () => exclude);
+        source.Reconcile();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        active = [];
+        var result = await source.PollAsync(false, CancellationToken.None);
+        Assert.Equal(expected, result.AcceptedEvents.Count);
     }
 
     [Fact]

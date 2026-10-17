@@ -68,11 +68,13 @@ public sealed class RecvCapture(
             }
 
             onConnected?.Invoke();
+            string loginUin = "";
             client.Run(packet =>
             {
                 try
                 {
-                    var message = SsoDecode.DecodeMessagePush(packet);
+                    var message = SsoDecode.DecodeMessagePush(string.IsNullOrWhiteSpace(packet.Uin)
+                        ? packet with { Uin = loginUin } : packet);
                     if (message is null) return;
                     message.SourcePid = pid;
                     onMessage(message);
@@ -85,7 +87,7 @@ public sealed class RecvCapture(
                     // 坏消息，形成反复断连。
                     onError?.Invoke(ex);
                 }
-            });
+            }, login => loginUin = login.LoggedIn ? login.Uin : "");
         }
         catch (Exception) when (_stopRequested)
         {

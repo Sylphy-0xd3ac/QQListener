@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -8,7 +9,12 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FluentAvalonia.Styling;
+using FluentAvalonia.UI.Controls;
+using QQListener.Views;
 using QQListener.Models;
+using QQListener.Pipes;
+using QQListener.Protocol;
+using QQListener.Views.SettingsPages;
 using QQListener.Services;
 using QQListener.Views.Windows;
 
@@ -20,7 +26,8 @@ internal static class Program
     public static int Main(string[] args)
     {
         var native = args.Length > 0 && args[0] == "--native-check";
-        var render = native || args.Length > 0 && args[0] == "--render";
+        var automation = args.Contains("--automation-check");
+        var render = native || automation || args.Length > 0 && args[0] == "--render";
         var app = AppBuilder.Configure<PreviewApplication>();
         if (!render) return app.UsePlatformDetect().StartWithClassicDesktopLifetime(args);
 
@@ -61,12 +68,15 @@ internal static class Program
             return 0;
         }
         app.UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        VerifyAutomationCompatibility();
+        if (automation) return 0;
 
         foreach (var kind in Enum.GetValues<MessagePreviewKind>())
         {
             var window = QqMessageWindow.ShowMessage(
                 MessagePreviewSamples.Create(kind, MessageImportance.Normal), TimeSpan.FromMinutes(1));
             Pump(TimeSpan.FromSeconds(3));
+            WaitForDrawer(window);
             if (window.FindControl<TextBlock>("Identifiers") is not null)
                 throw new InvalidOperationException("号码组件必须删除");
             if (kind != MessagePreviewKind.Text &&
@@ -98,7 +108,201 @@ internal static class Program
         VerifyPendingDigest(directory);
         VerifyImageDownload();
         VerifyInteractionLifetime();
+        VerifyScaledIslandAnchor();
+        VerifyReplyActions(directory);
+        VerifyThemesAndSettings(directory);
         return 0;
+    }
+
+    private static void VerifyAutomationCompatibility()
+    {
+        // Exercise the same peer called by the native macOS accessibility bridge.
+        var empty = new ItemsRepeater();
+        try
+        {
+            new ItemsRepeaterAutomationPeer(empty).GetChildren();
+            throw new InvalidOperationException("空列表未复现预期的上游空引用，需重新核对兼容保护");
+        }
+        catch (NullReferenceException)
+        {
+            Console.WriteLine("Reproduced FluentAvalonia empty repeater accessibility crash");
+        }
+        ItemsRepeaterAutomationCompatibility.Install();
+        ItemsRepeaterAutomationCompatibility.Install();
+        if (new ItemsRepeaterAutomationPeer(empty).GetChildren().Count != 0)
+            throw new InvalidOperationException("空列表辅助功能子项不为空");
+        var repeater = new ItemsRepeater
+        {
+            ItemsSource = new Control[] { new Button { Content = "first" }, new Button { Content = "second" } }
+        };
+        var window = new Window { Width = 680, Height = 800, Content = repeater };
+        window.Show();
+        Pump(TimeSpan.FromMilliseconds(100));
+        var childCount = new ItemsRepeaterAutomationPeer(repeater).GetChildren().Count;
+        // Virtualization may only realize the first row in the headless viewport.
+        if (childCount < 1 || childCount != repeater.GetVisualChildren().Count())
+            throw new InvalidOperationException($"非空列表辅助功能被破坏: {childCount}, visuals={repeater.GetVisualChildren().Count()}, bounds={repeater.Bounds}");
+        repeater.ItemsSource = Array.Empty<string>();
+        Pump(TimeSpan.FromMilliseconds(100));
+        if (new ItemsRepeaterAutomationPeer(repeater).GetChildren().Count != 0)
+            throw new InvalidOperationException("清空列表后辅助功能仍有子项");
+        window.Content = new QqListenerSettingsPage();
+        Pump(TimeSpan.FromMilliseconds(200));
+        void Traverse(AutomationPeer peer)
+        {
+            foreach (var child in peer.GetChildren()) Traverse(child);
+        }
+        Traverse(ControlAutomationPeer.CreatePeerForElement(window)!);
+        foreach (var expander in window.GetVisualDescendants().OfType<SettingsExpander>())
+            expander.IsExpanded = true;
+        Pump(TimeSpan.FromMilliseconds(400));
+        Traverse(ControlAutomationPeer.CreatePeerForElement(window)!);
+        window.Close();
+        Console.WriteLine("Accessibility: empty / populated / cleared lists and collapsed / expanded settings OK");
+    }
+
+    private static void VerifyScaledIslandAnchor()
+    {
+        var background = new Border
+        {
+            Width = 240, Height = 40, Background = Brushes.Gray,
+            RenderTransform = new ScaleTransform(0.65, 0.65),
+            RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Absolute)
+        };
+        var canvas = new Canvas();
+        Canvas.SetLeft(background, 40);
+        Canvas.SetTop(background, 20);
+        canvas.Children.Add(background);
+        var host = new Window { Width = 500, Height = 200, Content = canvas, Position = new PixelPoint(120, 100) };
+        host.Show();
+        Pump(TimeSpan.FromMilliseconds(100));
+        void Verify()
+        {
+            var left = background.PointToScreen(new Point(0, 0));
+            var right = background.PointToScreen(new Point(background.Bounds.Width, background.Bounds.Height));
+            var anchor = ClassIslandSurface.BottomCenter(background);
+            if (Math.Abs(anchor.X - (left.X + right.X) / 2.0) > 1 || anchor.Y != right.Y)
+                throw new InvalidOperationException("宿主缩放后抽屉锚点未对齐通知栏中心");
+            var oldCenter = left.X + background.Bounds.Width * host.RenderScaling / 2;
+            if (Math.Abs(oldCenter - anchor.X) < 10)
+                throw new InvalidOperationException("测试未覆盖宿主缩放造成的中心偏移");
+        }
+        Verify();
+        host.Position = new PixelPoint(210, 140);
+        background.Width = 320;
+        Pump(TimeSpan.FromMilliseconds(100));
+        Verify();
+        host.Close();
+        Console.WriteLine("Island anchor: visual zoom / moved window / resized bar centered OK");
+    }
+
+    private static void WaitForDrawer(QqMessageWindow window)
+    {
+        for (var i = 0; i < 30 && window.FindControl<Border>("Card")!.RenderTransform is not null; i++)
+            Pump(TimeSpan.FromMilliseconds(50));
+        Pump(TimeSpan.FromMilliseconds(100));
+        var card = window.FindControl<Border>("Card")!;
+        var viewport = window.FindControl<Panel>("DrawerViewport")!;
+        if (card.RenderTransform is not null || viewport.Bounds.Height + 1 < card.Bounds.Height)
+            throw new InvalidOperationException("抽屉展开后仍裁切正文");
+    }
+
+    private static void VerifyThemesAndSettings(string directory)
+    {
+        foreach (var theme in new[] { ThemeVariant.Dark, ThemeVariant.Light })
+        {
+            Application.Current!.RequestedThemeVariant = theme;
+            var sample = MessagePreviewSamples.Create(MessagePreviewKind.Quote, MessageImportance.Normal) with
+            {
+                SourcePid = 1, Scene = "group", RawSeq = 42
+            };
+            var message = QqMessageWindow.ShowMessage(sample, TimeSpan.FromSeconds(30));
+            Pump(TimeSpan.FromSeconds(3));
+            WaitForDrawer(message);
+            using (var frame = message.CaptureRenderedFrame()!)
+                frame.Save(Path.Combine(directory, $"Reply-{theme}.png"));
+            var position = message.Position;
+            var height = message.Bounds.Height;
+            message.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "取消")
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Pump(TimeSpan.FromMilliseconds(100));
+            if (message.IsVisible && (message.Bounds.Height >= height || message.Position.Y != position.Y))
+                throw new InvalidOperationException("抽屉应保持上沿固定，向上收回");
+            Pump(TimeSpan.FromMilliseconds(300));
+            if (message.IsVisible) throw new InvalidOperationException("取消后未收起通知");
+            var settings = new Window { Width = 680, Height = 800, Content = new QqListenerSettingsPage() };
+            settings.Show();
+            Pump(TimeSpan.FromMilliseconds(300));
+            using (var frame = settings.CaptureRenderedFrame()!)
+                frame.Save(Path.Combine(directory, $"Settings-{theme}.png"));
+            settings.Close();
+        }
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        Console.WriteLine("Light/dark message and settings previews OK");
+    }
+
+    private static void VerifyReplyActions(string directory)
+    {
+        var message = MessagePreviewSamples.Create(MessagePreviewKind.Text, MessageImportance.Normal) with
+        {
+            SourcePid = 1, Scene = "group", RawSeq = 42
+        };
+        ReplyTransport? transport = null;
+        var fail = false;
+        var service = new MessageReplyService(_ => transport = new ReplyTransport(fail));
+        using var bar = new MessageReplyBar(message, "老师，已收到", service);
+        var dismissals = 0;
+        bar.DismissRequested += () => dismissals++;
+        var window = new Window { Width = 400, Content = bar };
+        window.Show();
+        Button Button(string text) => bar.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == text);
+        Button("取消").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        if (dismissals != 1 || transport is not null)
+            throw new InvalidOperationException("取消不应发送消息");
+        fail = true;
+        Button("确定").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Pump(TimeSpan.FromMilliseconds(300));
+        if (dismissals != 1 || !Button("确定").IsEnabled ||
+            !bar.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "发送失败，请重试"))
+            throw new InvalidOperationException("QQ 拒绝发送时必须保留重试入口");
+        fail = false;
+        Button("确定").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Pump(TimeSpan.FromMilliseconds(300));
+        if (dismissals != 2 || transport is null)
+            throw new InvalidOperationException("确认成功后应收起提醒");
+        var request = new FrameReader().Push(transport.Request).Single();
+        var fields = Wire.DecodeFields(request.Body);
+        var body = Wire.FieldBytes(fields, 3);
+        var rich = Wire.FieldBytes(Wire.DecodeFields(body), 1);
+        var segments = RichText.ParseElems(rich, true);
+        if (MessageText.Render(segments.Where(seg => seg.Type == "text")) != "老师，已收到" ||
+            segments.FirstOrDefault(seg => seg.Type == "reply")?.Get<ulong>("seq") != 42)
+            throw new InvalidOperationException("确定必须发送配置文本并引用原消息");
+        window.Close();
+        Console.WriteLine("Reply: cancel / server rejection / retry / configured text / quote OK (mock pipe)");
+    }
+
+    private sealed class ReplyTransport : IPipeTransport
+    {
+        private readonly byte[] _response;
+        private int _offset;
+        public byte[] Request { get; private set; } = [];
+        public ReplyTransport(bool fail)
+        {
+            _response = Wire.Concat(Hqp1.EncodeFrame(PipeOp.Hello),
+                Hqp1.EncodeFrame(PipeOp.SendAck, requestId: 1),
+                Hqp1.EncodeFrame(PipeOp.SendReply, requestId: 1,
+                    body: Wire.EncodeVarintField(1, fail ? 1UL : 0UL)));
+        }
+        public int Read(Span<byte> buffer)
+        {
+            var length = Math.Min(buffer.Length, _response.Length - _offset);
+            _response.AsSpan(_offset, length).CopyTo(buffer);
+            _offset += length;
+            return length;
+        }
+        public void Write(ReadOnlySpan<byte> buffer) => Request = buffer.ToArray();
+        public void Dispose() { }
     }
 
     private static void VerifyPendingDigest(string directory)
@@ -106,7 +310,7 @@ internal static class Program
         var media = MessagePreviewSamples.Create(MessagePreviewKind.Media, MessageImportance.Normal);
         var quote = MessagePreviewSamples.Create(MessagePreviewKind.Quote, MessageImportance.Important) with
         {
-            Sender = "李四", Conversation = "另一个群", SourcePid = 1, Scene = "group"
+            Sender = "李四", Conversation = "另一个群", SourcePid = 1, Scene = "group", RawSeq = 42
         };
         var digest = PendingMessageDigest.Create([media, quote], 5)!;
         var window = QqMessageWindow.ShowMessage(digest, TimeSpan.FromMinutes(1));

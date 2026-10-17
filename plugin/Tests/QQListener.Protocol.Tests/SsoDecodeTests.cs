@@ -127,6 +127,69 @@ public class SsoDecodeTests
         Assert.Equal(0UL, msg.RawSeq);
     }
 
+    [Theory]
+    [InlineData(528, 138)] // Friend recall
+    [InlineData(528, 139)] // Self recall
+    [InlineData(732, 17)]  // Group recall, even with group routing and text
+    [InlineData(732, 20)]
+    [InlineData(33, 0)]
+    [InlineData(84, 0)]
+    [InlineData(0, 0)]
+    [InlineData(9999, 0)]
+    public void NonChatEventsAreNeverRendered(int type, int subType)
+    {
+        var response = Pb.Cat(Pb.VarintField(1, 1001), Pb.LenField(8, Pb.VarintField(1, 123456)));
+        var content = Pb.Cat(Pb.VarintField(1, (ulong)type), Pb.VarintField(2, (ulong)subType));
+        Assert.Null(SsoDecode.DecodeMessagePush(Packet(PushMsg(response, content, Pb.TextElem("系统提示")))));
+    }
+
+    [Theory]
+    [InlineData(1)] [InlineData(73)] [InlineData(75)] [InlineData(129)]
+    [InlineData(131)] [InlineData(133)] [InlineData(135)] [InlineData(192)]
+    public void PrivateControlPushIsIgnoredEvenWithText(int command)
+    {
+        var content = Pb.Cat(Pb.VarintField(1, 166), Pb.VarintField(3, (ulong)command));
+        Assert.Null(SsoDecode.DecodeMessagePush(Packet(PushMsg(Pb.VarintField(1, 1001), content, Pb.TextElem("x")))));
+    }
+
+    [Theory]
+    [InlineData(9)] [InlineData(141)] [InlineData(166)] [InlineData(167)]
+    [InlineData(208)] [InlineData(529)]
+    public void SupportedPrivateMessageKindsRemainMessages(int type)
+    {
+        var content = Pb.VarintField(1, (ulong)type);
+        var result = SsoDecode.DecodeMessagePush(Packet(PushMsg(Pb.VarintField(1, 1001), content, Pb.TextElem("你好"))));
+        Assert.NotNull(result);
+        Assert.Equal("c2c", result.Scene);
+    }
+
+    [Fact]
+    public void EmptyAndIdentitylessPushesAreIgnored()
+    {
+        Assert.Null(SsoDecode.DecodeMessagePush(Packet(PushMsg(Pb.VarintField(1, 1001), Pb.VarintField(1, 166), Pb.TextElem("  ")))));
+        Assert.Null(SsoDecode.DecodeMessagePush(Packet(PushMsg([], Pb.VarintField(1, 166), Pb.TextElem("x")))));
+    }
+
+    [Fact]
+    public void OfflineFileReceiptIsIgnoredEvenWhenItCarriesText()
+    {
+        var rich = Pb.Cat(Pb.Rich(Pb.TextElem("文件")), Pb.LenField(3, Pb.VarintField(12, 2)));
+        var message = Pb.Cat(Pb.LenField(1, Pb.VarintField(1, 1001)),
+            Pb.LenField(2, Pb.VarintField(1, 529)), Pb.LenField(3, Pb.LenField(1, rich)));
+        Assert.Null(SsoDecode.DecodeMessagePush(Packet(Pb.LenField(1, message))));
+    }
+
+    [Fact]
+    public void VoiceMessageWithNoTextIsStillAChatMessage()
+    {
+        var rich = Pb.LenField(4, Pb.Cat(Pb.LenField(5, "语音"), Pb.VarintField(19, 5)));
+        var message = Pb.Cat(Pb.LenField(1, Pb.VarintField(1, 1001)),
+            Pb.LenField(2, Pb.VarintField(1, 208)), Pb.LenField(3, Pb.LenField(1, rich)));
+        var decoded = SsoDecode.DecodeMessagePush(Packet(Pb.LenField(1, message)));
+        Assert.NotNull(decoded);
+        Assert.Equal("record", Assert.Single(decoded.Segments).Type);
+    }
+
     [Fact]
     public void NonMessageCommand_IsIgnored()
     {
@@ -145,7 +208,7 @@ public class SsoDecodeTests
     {
         var responseHead = Pb.Cat(Pb.VarintField(1, 1001),
             Pb.LenField(8, Pb.VarintField(1, 123456)));
-        var contentHead = Pb.Cat(Pb.VarintField(5, 42), Pb.VarintField(6, 1700000000));
+        var contentHead = Pb.Cat(Pb.VarintField(1, 82), Pb.VarintField(5, 42), Pb.VarintField(6, 1700000000));
 
         var msg = SsoDecode.DecodeMessagePush(
             Packet(PushMsg(responseHead, contentHead, Pb.TextElem("x"))));

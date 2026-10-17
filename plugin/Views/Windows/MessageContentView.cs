@@ -32,11 +32,16 @@ public sealed class MessageContentView : StackPanel, IDisposable
         AddBlocks(this, MessageContentPresentation.Create(message));
     }
 
-    private static TextBlock Label(string text, double size = 16) => new()
+    private static T Themed<T>(T control, AvaloniaProperty property, string resource) where T : Control
     {
-        Text = text, FontSize = size, Foreground = Brushes.White,
-        TextWrapping = TextWrapping.Wrap
-    };
+        control.SetResourceReference(property, resource);
+        return control;
+    }
+
+    private static TextBlock Label(string text, double size = 16) => Themed(new TextBlock
+    {
+        Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap
+    }, TextBlock.ForegroundProperty, "TextFillColorPrimaryBrush");
 
     private void AddBlocks(StackPanel panel, IReadOnlyList<MessageContentBlock> blocks, bool compact = false)
     {
@@ -47,12 +52,12 @@ public sealed class MessageContentView : StackPanel, IDisposable
             {
                 var entry = new StackPanel { Spacing = 8 };
                 var sender = Label(block.Text, 14);
-                sender.Foreground = new SolidColorBrush(Color.Parse("#60CDFF"));
+                sender.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
                 entry.Children.Add(sender);
                 AddBlocks(entry, block.Children ?? []);
                 panel.Children.Add(new Border
                 {
-                    BorderBrush = new SolidColorBrush(Color.Parse("#30FFFFFF")),
+                    BorderBrush = this.FindResource("ControlStrokeColorDefaultBrush") as IBrush,
                     BorderThickness = new Thickness(0, 0, 0, 1),
                     Padding = new Thickness(0, 0, 0, 10), Child = entry
                 });
@@ -63,13 +68,13 @@ public sealed class MessageContentView : StackPanel, IDisposable
                 if (!string.IsNullOrWhiteSpace(block.Text))
                 {
                     var sender = Label(block.Text, 12);
-                    sender.Foreground = new SolidColorBrush(Color.Parse("#60CDFF"));
+                    sender.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
                     quote.Children.Add(sender);
                 }
                 AddBlocks(quote, block.Children ?? [], compact: true);
                 panel.Children.Add(new Border
                 {
-                    BorderBrush = new SolidColorBrush(Color.Parse("#60CDFF")),
+                    BorderBrush = this.FindResource("AccentTextFillColorPrimaryBrush") as IBrush,
                     BorderThickness = new Thickness(3, 0, 0, 0),
                     Padding = new Thickness(14, 2, 0, 2), Child = quote
                 });
@@ -93,7 +98,7 @@ public sealed class MessageContentView : StackPanel, IDisposable
             else if (block.Kind == "text")
             {
                 var label = Label(block.Text, compact ? 14 : 16);
-                if (compact) label.Foreground = new SolidColorBrush(Color.Parse("#CCD2DB"));
+                if (compact) label.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
                 panel.Children.Add(label);
             }
             else panel.Children.Add(CreateAttachment(block, compact));
@@ -104,7 +109,7 @@ public sealed class MessageContentView : StackPanel, IDisposable
     {
         var isImage = block.Kind == "image";
         var status = Label("", 12);
-        status.Foreground = new SolidColorBrush(Color.Parse("#BCC5D1"));
+        status.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
         // 一律左对齐。图片居中的话，"文字—图片—文字"这种消息读起来是折线：
         // 两段文字贴左边，中间的图片却飘在中央，还会在两侧留下大片空白。
         var image = new Image
@@ -136,7 +141,7 @@ public sealed class MessageContentView : StackPanel, IDisposable
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("32,*,Auto"), ColumnSpacing = 12 };
             var icon = Label(block.Kind == "video" ? "▶" : block.Kind == "record" ? "♪" : "▤", 24);
             icon.VerticalAlignment = VerticalAlignment.Center;
-            icon.Foreground = new SolidColorBrush(Color.Parse("#60CDFF"));
+            icon.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
             row.Children.Add(icon);
             var text = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(Label(block.Text, 14));
@@ -148,8 +153,8 @@ public sealed class MessageContentView : StackPanel, IDisposable
             result = new Border
             {
                 MinHeight = 62, Padding = new Thickness(14, 8), CornerRadius = new CornerRadius(8),
-                Background = new SolidColorBrush(Color.Parse("#0CFFFFFF")),
-                BorderBrush = new SolidColorBrush(Color.Parse("#20FFFFFF")), BorderThickness = new Thickness(1),
+                Background = this.FindResource("SubtleFillColorSecondaryBrush") as IBrush,
+                BorderBrush = this.FindResource("ControlStrokeColorDefaultBrush") as IBrush, BorderThickness = new Thickness(1),
                 Child = row
             };
         }

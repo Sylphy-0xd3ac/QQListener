@@ -21,6 +21,7 @@ public class Plugin : PluginBase
 {
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
     {
+        Views.ItemsRepeaterAutomationCompatibility.Install();
         var settings = LoadStartupSettings(PluginConfigFolder);
 
         var diagnostics = new QqListenerDiagnosticsState();
@@ -78,11 +79,7 @@ public class Plugin : PluginBase
         services.AddSingleton<ILessonStateProvider, ClassIslandLessonStateProvider>();
         services.AddSingleton<MessageRuleEvaluator>();
         services.AddSingleton<MessageEventPipeline>();
-#if WINDOWS
-        // 编译进 Windows 分支 ≠ 一定跑在 Windows 上：net8.0-windows 的程序集在 macOS /
-        // Linux 的 ClassIsland 里照样能装载（用户会拿同一个 cipx 到处试），此时
-        // 进程枚举、命名管道这些调用会直接抛出去。运行时再判一次，非 Windows 上
-        // 退回占位实现——跟 #else 分支同样的效果。
+        // Native services use runtime platform checks, including portable net8.0 packages on Windows.
         if (!OperatingSystem.IsWindows())
         {
             services.AddSingleton<IQqNotificationPoller, NoOpNotificationPoller>();
@@ -91,35 +88,32 @@ public class Plugin : PluginBase
         }
         else
         {
-        // 接管数据源：不再轮询 Windows 通知中心的弹窗文本，改用 SnowLuma 注入 +
-        // HQP1 管道直接解析 QQ 的私有 SSO 报文。IQqNotificationPoller 这层抽象与
-        // QqListenerWorker 的调用方式都不变，只是背后的实现换了。
-        services.AddSingleton(sp =>
-        {
-            // 目录计算必须跟设置页安装向导（QqListenerSettingsPage 构造 KernelSetupViewModel
-            // 时）用的是同一个方法——两边算出不一样的路径，会出现"向导显示安装成功，
-            // 核心却永远找不到文件"的问题，之前这里就是这么坏掉的：CoreService 用的是
-            // 默认参数（插件安装目录），向导装的是 SettingsDirectory/native。
-            var settings = sp.GetRequiredService<QqListenerSettings>();
-            var nativeDir = QQListener.Core.KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory);
-            return new QQListener.Core.CoreService(
-                findBinary: () => QQListener.Core.KernelLocator.FindHookBinary([nativeDir]));
-        });
-        services.AddHostedService<NativeCoreLifecycleService>();
-        services.AddSingleton<NativeMessageEnrichment>(_ => NativeMessageEnrichment.ForCoreService());
-        services.AddSingleton<IQqNotificationPoller>(sp =>
-            NativeQqMessageSource.ForCoreService(
-                sp.GetRequiredService<QQListener.Core.CoreService>(),
-                sp.GetRequiredService<MessageEventPipeline>(),
-                sp.GetRequiredService<NativeMessageEnrichment>(),
-                sp.GetRequiredService<QqListenerSettings>()));
+            // 接管数据源：不再轮询 Windows 通知中心的弹窗文本，改用 SnowLuma 注入 +
+            // HQP1 管道直接解析 QQ 的私有 SSO 报文。IQqNotificationPoller 这层抽象与
+            // QqListenerWorker 的调用方式都不变，只是背后的实现换了。
+            services.AddSingleton(sp =>
+            {
+                // 目录计算必须跟设置页安装向导（QqListenerSettingsPage 构造 KernelSetupViewModel
+                // 时）用的是同一个方法——两边算出不一样的路径，会出现"向导显示安装成功，
+                // 核心却永远找不到文件"的问题，之前这里就是这么坏掉的：CoreService 用的是
+                // 默认参数（插件安装目录），向导装的是 SettingsDirectory/native。
+                var settings = sp.GetRequiredService<QqListenerSettings>();
+                var nativeDir = QQListener.Core.KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory);
+                return new QQListener.Core.CoreService(
+                    findBinary: () => QQListener.Core.KernelLocator.FindHookBinary([nativeDir]));
+            });
+            services.AddHostedService<NativeCoreLifecycleService>();
+            services.AddSingleton<NativeMessageEnrichment>(_ => NativeMessageEnrichment.ForCoreService());
+            services.AddSingleton<IQqNotificationPoller>(sp =>
+                NativeQqMessageSource.ForCoreService(
+                    sp.GetRequiredService<QQListener.Core.CoreService>(),
+                    sp.GetRequiredService<MessageEventPipeline>(),
+                    sp.GetRequiredService<NativeMessageEnrichment>(),
+                    sp.GetRequiredService<QqListenerSettings>(),
+                    sp.GetRequiredService<ILessonStateProvider>(),
+                    sp.GetRequiredService<TimeProvider>()));
         }
-#else
-        // 原生捕获依赖真实 Windows API（命名管道、进程枚举），非 Windows 上换成
-        // 占位实现，让插件仍能装载、跑单测——旧的 toast 数据源（轮询通知中心弹窗
-        // 文本）已经随这次移植整体退役。
-        services.AddSingleton<IQqNotificationPoller, NoOpNotificationPoller>();
-#endif
+
         services.AddSingleton<IQqListenerDelay, SystemQqListenerDelay>();
         services.AddSingleton<ClassIslandMessageNotifier>();
         services.AddSingleton<LatestMessageState>();

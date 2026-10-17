@@ -12,6 +12,34 @@ public class CoreServiceTests : IDisposable
     private static MapHandle Handle(int pid) => new((ulong)pid * 0x1000, (ulong)pid * 0x1000 + 0x100, 0, 0x3000);
 
     [Fact]
+    public async Task HostStartupInjectsWithoutClickingLoad()
+    {
+        CoreController.ResetToDefault();
+        var injected = new TaskCompletionSource();
+        using var service = new CoreService(enumeratePids: () => [11], findBinary: () => "hook.dll",
+            injectFunc: (pid, _) => { injected.TrySetResult(); return Handle(pid); },
+            unloadFunc: (_, _) => { }, hookActive: _ => false,
+            recheckMainProcess: _ => true, supported: true);
+        var lifecycle = new QQListener.Services.NativeCoreLifecycleService(service);
+        try
+        {
+            await lifecycle.StartAsync(CancellationToken.None);
+            await injected.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally { await lifecycle.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public void PauseStillAttachesNewQqProcessesSoTheyCanAccumulateMessages()
+    {
+        using var service = new CoreService(enumeratePids: () => [11], findBinary: () => "hook.dll",
+            injectFunc: (pid, _) => Handle(pid), unloadFunc: (_, _) => { },
+            hookActive: _ => false, recheckMainProcess: _ => true, supported: true);
+        service.Reconcile(CoreState.Paused);
+        Assert.Contains(11, service.ActivePids);
+    }
+
+    [Fact]
     public void ReconcileRunningInjectsEachPidOnce()
     {
         var injected = new List<(int Pid, string Path)>();

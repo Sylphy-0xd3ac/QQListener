@@ -92,10 +92,19 @@ public partial class QqListenerSettings : ObservableObject
     [ObservableProperty]
     private string _ruleTimeWindowEndText = "00:00";
 
-    /// <summary>上课期间不弹提醒。默认开着——这是个课堂软件的插件，上课时被 QQ 消息
-    /// 打断正是它最该避免的事；下课、预备铃、放学后照常提醒。</summary>
+    /// <summary>上课期间继续捕获并积压消息，下课后按配置延迟释放。默认开启。</summary>
     [ObservableProperty]
     private bool _disableDuringClass = true;
+
+    /// <summary>下课后继续积压的秒数；0 表示立即释放。</summary>
+    [ObservableProperty]
+    private int _afterClassDelaySeconds;
+
+    [ObservableProperty]
+    private bool _excludeSelfMessages = true;
+
+    [ObservableProperty]
+    private string _defaultReplyText = "收到";
 
     /// <summary>把消息念出来。默认开——课堂上人多半没在看屏幕，念一遍才是这个插件
     /// 真正起作用的方式。走 ClassIsland 自己的语音队列，不跟课程表播报抢音频通道。</summary>
@@ -247,6 +256,8 @@ public partial class QqListenerSettings : ObservableObject
         CallingDurationSeconds = Math.Clamp(CallingDurationSeconds, 1, 86400);
         RollingSpeed = Math.Clamp(RollingSpeed, 0.0, 4.0);
         PendingQueueLimit = Math.Clamp(PendingQueueLimit, 1, 500);
+        AfterClassDelaySeconds = Math.Clamp(AfterClassDelaySeconds, 0, 3600);
+        DefaultReplyText = string.IsNullOrWhiteSpace(DefaultReplyText) ? "收到" : DefaultReplyText.Trim();
         CallingKeyword = (CallingKeyword ?? "").Trim();
 
         // 两端分别校验、分别回退——之前任何一端解析失败就把两端一起清零，用户只是

@@ -31,14 +31,15 @@ public sealed record MessageEvent(
     public bool MentionsSelf { get; init; }
 
     /// <summary>
-    /// 能不能对这条消息发起回复——只有原生捕获、且对端能用一个数字账号路由才行。
+    /// 能不能引用回复——需要原生捕获的路由、发送者以及有效的协议序列号。
     ///
     /// 私聊消息偶尔只有 uid（QQ 没能解出对方的数字账号）没有 uin：SsoDecode 那边
     /// 退化用 uid 字符串顶上 ConversationId，但 MessageSender 硬性要求
     /// peerUin &gt; 0，只靠 uid 是发不出去的。这里收紧成必须能解析成正整数，
     /// 别让 UI 显示一个点了必然失败的"回复"入口。
     /// </summary>
-    public bool CanReply => SourcePid != 0 && Scene.Length > 0
+    public bool CanReply => SourcePid > 0 && (Scene is "group" or "c2c") && RawSeq > 0
+        && long.TryParse(SenderId, out var senderUin) && senderUin > 0
         && long.TryParse(ConversationId, out var peerUin) && peerUin > 0;
 
     /// <summary>暂停恢复后的摘要保留每条原消息，供富消息展示和明确回复目标。</summary>

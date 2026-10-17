@@ -41,6 +41,13 @@ public class MessageReplyServiceTests
     }
 
     [Fact]
+    public void MissingQuoteMetadataDoesNotOfferAnUnquotedReply()
+    {
+        Assert.False((NativeMessage() with { RawSeq = 0 }).CanReply);
+        Assert.False((NativeMessage() with { SenderId = "" }).CanReply);
+    }
+
+    [Fact]
     public void BuildRouteCarriesQuoteInfoFromTheMessage()
     {
         var route = MessageReplyService.BuildRoute(NativeMessage());

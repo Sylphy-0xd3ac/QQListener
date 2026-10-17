@@ -8,7 +8,7 @@ public enum CoreState { Detached, Running, Paused }
 /// 三态：
 /// - Detached  未注入：钩子不在 QQ 里，没有管道。
 /// - Running   运行中：钩子已注入且捕获连通。
-/// - Paused    已暂停：钩子仍在 QQ 里，但停止读管道（轻量、可秒恢复）。
+/// - Paused    已暂停：钩子与接收管道继续运行，消息积压在内存中，恢复后合并显示。
 ///
 /// 交互约定（由 UI 层触发）：
 /// - 单击 → <see cref="Toggle"/>：Running⇄Paused；Detached→Running（重新启动）。

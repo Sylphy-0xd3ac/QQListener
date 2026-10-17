@@ -24,6 +24,7 @@ public sealed class CoreService : IDisposable
     private readonly bool _supported;
 
     private readonly object _gate = new();
+    private readonly object _lifecycleGate = new();
     private readonly Dictionary<int, MapHandle> _handles = [];
     private readonly HashSet<int> _externalPids = [];
     // 远程调用超时后 ManualMapInjector 会故意保留目标内存不释放（回收会导致确定性崩溃），
@@ -76,6 +77,11 @@ public sealed class CoreService : IDisposable
     }
 
     public void Start()
+    {
+        lock (_lifecycleGate) StartCore();
+    }
+
+    private void StartCore()
     {
         if (!_supported)
         {
@@ -177,11 +183,7 @@ public sealed class CoreService : IDisposable
                 CoreRuntime.Set(CoreRuntimeState.Detached, "核心已卸载");
             return;
         }
-        if (targetState == CoreState.Paused)
-        {
-            CoreRuntime.Set(CoreRuntimeState.Paused, "监听已暂停，核心仍保留在 QQ 中");
-            return;
-        }
+        // Pause suppresses delivery, not capture. New/restarted QQ processes still need a hook.
 
         if (currentPids.Count == 0)
         {
@@ -199,7 +201,7 @@ public sealed class CoreService : IDisposable
 
         if (candidates.Count == 0)
         {
-            ReportIdleState(currentPids, "核心已映射，等待接收管道");
+            ReportIdleState(currentPids, "核心已映射，等待接收管道", targetState);
             return;
         }
 
@@ -213,7 +215,7 @@ public sealed class CoreService : IDisposable
         }
         if (needsInjection.Count == 0)
         {
-            ReportIdleState(currentPids, "已发现核心，等待接收管道");
+            ReportIdleState(currentPids, "已发现核心，等待接收管道", targetState);
             return;
         }
 
@@ -263,7 +265,7 @@ public sealed class CoreService : IDisposable
     /// 因为远程调用超时被跳过（<see cref="_stuckPids"/>），不能让这句"一切正常"的
     /// Waiting 把刚报出来的 Error 悄悄盖掉：那样用户只会在出事的那一瞬间看到一次
     /// 提示，下一轮（最多 2 秒后）就又变回岁月静好，等于没提示过。</summary>
-    private void ReportIdleState(IReadOnlySet<int> currentPids, string waitingDetail)
+    private void ReportIdleState(IReadOnlySet<int> currentPids, string waitingDetail, CoreState targetState)
     {
         int stuckCount;
         lock (_gate) stuckCount = _stuckPids.Count;
@@ -276,7 +278,7 @@ public sealed class CoreService : IDisposable
         // RecvCapture 可能在这一轮扫描期间刚把状态推进到 Connected；在这里重新读取，
         // 避免用 Reconcile 开头取得的旧快照把刚建立的连接覆盖回 Waiting。
         var runtime = CoreRuntime.Get();
-        if (runtime.State == CoreRuntimeState.Connected && currentPids.Contains(runtime.Pid))
+        if (targetState == CoreState.Running && runtime.State == CoreRuntimeState.Connected && currentPids.Contains(runtime.Pid))
             return;
 
         int[] activePids;
@@ -294,7 +296,8 @@ public sealed class CoreService : IDisposable
         var pid = runtime.Pid > 0 && activePids.Contains(runtime.Pid)
             ? runtime.Pid
             : activePids.FirstOrDefault();
-        CoreRuntime.Set(CoreRuntimeState.Waiting, waitingDetail, pid);
+        CoreRuntime.Set(targetState == CoreState.Paused ? CoreRuntimeState.Paused : CoreRuntimeState.Waiting,
+            targetState == CoreState.Paused ? "监听已暂停，消息正在积压" : waitingDetail, pid);
     }
 
     private void UnloadAll(HashSet<int> currentPids)

@@ -8,57 +8,17 @@
       mc:Ignorable="d"
       d:DesignHeight="800" d:DesignWidth="600">
 
+    <ci:SettingsPageBase.Styles>
+        <Style Selector="WrapPanel > Control">
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </ci:SettingsPageBase.Styles>
+
     <!-- 图标码位来自 ClassIsland 内置的 FluentSystemIcons-Resizable 字体
          （ic_fluent_*_20_regular）。这套字体跟 Segoe MDL2 的码位完全不是一回事，
          照着 MDL2 的表抄会得到一堆毫不相干的图形。 -->
     <ScrollViewer>
         <StackPanel Classes="settings-container animated-intro" Spacing="4">
-
-            <!-- 页头：左边是实时状态，右边是插件简介 -->
-            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
-                <StackPanel Grid.Column="0"
-                            Orientation="Horizontal"
-                            Spacing="12"
-                            VerticalAlignment="Center">
-                    <Ellipse Width="14"
-                             Height="14"
-                             VerticalAlignment="Center"
-                             Fill="{Binding KernelSetup.RuntimeStateBrush}" />
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock FontSize="24"
-                                   FontWeight="SemiBold"
-                                   Text="{Binding KernelSetup.RuntimeStateHeadline}" />
-                        <TextBlock FontSize="13"
-                                   MaxWidth="320"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Text="{Binding KernelSetup.RuntimeStateText}" />
-                        <TextBlock FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   Text="{Binding Diagnostics.ListenerState}" />
-                    </StackPanel>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Right"
-                            Margin="16,0,0,0">
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
-                               TextAlignment="Right"
-                               Text="QQListener" />
-                    <TextBlock FontSize="12"
-                               MaxWidth="260"
-                               TextAlignment="Right"
-                               TextWrapping="Wrap"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               Text="{Binding PluginInfo.Description}" />
-                    <TextBlock FontSize="12"
-                               TextAlignment="Right"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               Text="{Binding PluginInfo.HeaderLine}" />
-                </StackPanel>
-            </Grid>
 
             <!-- 内核（SnowLuma 官方二进制，本插件不打包、不自建镜像） -->
             <TextBlock FontSize="18"
@@ -70,7 +30,7 @@
 
             <Border CornerRadius="4" ClipToBounds="True" Margin="0,4,0,4">
                 <controls:SettingsExpanderItem>
-                    <Grid Margin="12" ColumnDefinitions="Auto,*,Auto">
+                    <Grid Margin="8" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
                         <ci:FluentIcon Grid.Column="0"
                                        Glyph="&#xE653;"
                                        FontSize="40"
@@ -93,17 +53,10 @@
                                        Text="{Binding KernelSetup.KernelVersionLine}" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="2"
+                        <StackPanel Grid.Column="1" Grid.Row="1" Margin="16,12,0,0"
                                     Orientation="Horizontal"
                                     Spacing="8"
                                     VerticalAlignment="Center">
-                            <Button Click="OnOpenKernelWizardClick"
-                                    IsEnabled="{Binding KernelSetup.IsSupported}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ci:FluentIcon Glyph="&#xF42F;" />
-                                    <TextBlock Text="安装向导" />
-                                </StackPanel>
-                            </Button>
                             <Button Command="{Binding KernelSetup.TogglePauseCommand}"
                                     IsEnabled="{Binding KernelSetup.IsSupported}"
                                     Content="{Binding KernelSetup.PauseButtonText}" />
@@ -113,16 +66,24 @@
             </Border>
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xEDCD;}"
-                                       Header="内核高级选项"
-                                       Description="暂停期间怎么攒消息，以及把钩子从 QQ 里摘掉。">
+                                       Header="高级设置"
+                                       Description="积压上限、重新触发安装向导与卸载内核。">
                 <controls:SettingsExpander.Items>
+                    <controls:SettingsExpanderItem Content="重新触发安装向导"
+                        Description="重新打开内核安装、更新和许可说明。已安装的内核会在加载插件时自动装载。">
+                        <controls:SettingsExpanderItem.Footer>
+                            <Button Content="重新触发安装向导" Click="OnOpenKernelWizardClick"
+                                    IsEnabled="{Binding KernelSetup.IsSupported}" />
+                        </controls:SettingsExpanderItem.Footer>
+                    </controls:SettingsExpanderItem>
+
                     <controls:SettingsExpanderItem
                         IconSource="{ci:FluentIconSource Glyph=&#xE9AA;}"
                         Content="暂停时最多攒多少条"
                         Description="暂停期间的消息先攒着，恢复时一次性补弹。超过这个数就丢掉最旧的一条。1~500">
                         <controls:SettingsExpanderItem.Footer>
-                            <TextBox Text="{Binding Settings.PendingQueueLimit, Mode=TwoWay}"
-                                     Width="100" />
+                            <NumericUpDown Value="{Binding Settings.PendingQueueLimit, Mode=TwoWay}"
+                                           Minimum="1" Maximum="500" FormatString="0" Width="140" />
                         </controls:SettingsExpanderItem.Footer>
                     </controls:SettingsExpanderItem>
 
@@ -131,10 +92,10 @@
                         Content="卸载内核"
                         Description="把钩子从 QQ 进程里摘掉，之后要重新注入才能继续收消息。先勾选确认才能点。">
                         <controls:SettingsExpanderItem.Footer>
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <WrapPanel Orientation="Horizontal">
                                 <CheckBox Content="我知道后果" IsChecked="{Binding KernelSetup.ConfirmUnload}" />
                                 <Button Content="卸载" Command="{Binding KernelSetup.UnloadCoreCommand}" />
-                            </StackPanel>
+                            </WrapPanel>
                         </controls:SettingsExpanderItem.Footer>
                     </controls:SettingsExpanderItem>
                 </controls:SettingsExpander.Items>
@@ -150,10 +111,28 @@
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xE02B;}"
                                        Header="启用监听"
-                                       Description="关掉之后内核还在 QQ 里，只是不再往 ClassIsland 送提醒。">
+                                       Description="控制是否向 ClassIsland 转发提醒。需要保留暂停期间的消息时，请使用上方“暂停监听”。">
                 <controls:SettingsExpander.Footer>
                     <ToggleSwitch IsChecked="{Binding Settings.IsEnabled, Mode=TwoWay}" />
                 </controls:SettingsExpander.Footer>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander Header="排除自己发送的消息"
+                Description="默认开启。按协议里的发送者 QQ 号与当前账号判断，过滤自己发送的群聊、私聊消息及其同步回显。">
+                <controls:SettingsExpander.Footer>
+                    <ToggleSwitch IsChecked="{Binding Settings.ExcludeSelfMessages, Mode=TwoWay}" />
+                </controls:SettingsExpander.Footer>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander Header="确定按钮的默认回复"
+                Description="点击提醒中的“确定”后，引用原消息发送此文本；“取消”只关闭提醒。积压摘要回复最后一条消息。">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsExpanderItem>
+                        <TextBox Text="{Binding Settings.DefaultReplyText, Mode=TwoWay}" Watermark="收到"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"
+                                 HorizontalAlignment="Stretch" />
+                    </controls:SettingsExpanderItem>
+                </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xEB78;}"
@@ -166,14 +145,14 @@
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xEB74;}"
                                        Header="呼叫关键词"
-                                       Description="消息里出现这个词时按最高等级提醒：单独的显示时长、默认置顶。适合上课时找你的紧急联络暗号。">
+                                       Description="消息里出现这个词时按最高等级提醒：单独的显示时长、默认置顶。开启上课暂停时会一同积压。">
                 <controls:SettingsExpander.Footer>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <WrapPanel Orientation="Horizontal">
                         <TextBox Text="{Binding Settings.CallingKeyword, Mode=TwoWay}"
                                  Width="160"
                                  IsEnabled="{Binding Settings.CallingEnabled}" />
                         <ToggleSwitch IsChecked="{Binding Settings.CallingEnabled, Mode=TwoWay}" />
-                    </StackPanel>
+                    </WrapPanel>
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
@@ -204,10 +183,19 @@
             </TextBlock>
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xEA82;}"
-                                       Header="上课时禁用"
-                                       Description="上课期间收到的消息一律不提醒，预备铃、课间和放学后照常。优先级高于所有其他规则，重要人物和呼叫关键词也拦得住。">
+                                       Header="上课时暂停提醒"
+                                       Description="上课期间继续收消息并积压在内存中，下课后合并显示。重要人物和呼叫消息也会等待。">
                 <controls:SettingsExpander.Footer>
                     <ToggleSwitch IsChecked="{Binding Settings.DisableDuringClass, Mode=TwoWay}" />
+                </controls:SettingsExpander.Footer>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander Header="下课后延迟提醒（秒）"
+                Description="给老师拖堂留出时间。延迟期间的新消息也会积压；再次上课会重新等待。0 表示不延迟，最多 3600 秒。">
+                <controls:SettingsExpander.Footer>
+                    <NumericUpDown Value="{Binding Settings.AfterClassDelaySeconds, Mode=TwoWay}"
+                                   Minimum="0" Maximum="3600" Increment="10" FormatString="0" Width="140"
+                                   IsEnabled="{Binding Settings.DisableDuringClass}" />
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
@@ -221,7 +209,7 @@
                                  TextWrapping="Wrap"
                                  HorizontalAlignment="Stretch"
                                  MinHeight="88"
-                                 Watermark="撤回了一条消息&#x0a;红包" />
+                                 Watermark="广告&#x0a;红包" />
                     </controls:SettingsExpanderItem>
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
@@ -288,7 +276,7 @@
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xE4C4;}"
                                        Header="只在这个时间段内提醒"
-                                       Description="上课时段之外一律静音。关掉就是全天提醒。">
+                                       Description="只保留指定时间段内收到的消息。关闭后不限制时间；上课暂停独立生效。">
                 <controls:SettingsExpander.Footer>
                     <ToggleSwitch IsChecked="{Binding Settings.RuleTimeWindowEnabled, Mode=TwoWay}" />
                 </controls:SettingsExpander.Footer>
@@ -298,13 +286,13 @@
                         Content="时间段"
                         Description="24 小时制 HH:mm。结束早于开始表示跨过午夜（比如 22:00 至 07:00）；两个填一样表示不限制。">
                         <controls:SettingsExpanderItem.Footer>
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <WrapPanel Orientation="Horizontal">
                                 <TextBox Text="{Binding Settings.RuleTimeWindowStartText, Mode=TwoWay}"
                                          Width="80" />
                                 <TextBlock Text="至" VerticalAlignment="Center" />
                                 <TextBox Text="{Binding Settings.RuleTimeWindowEndText, Mode=TwoWay}"
                                          Width="80" />
-                            </StackPanel>
+                            </WrapPanel>
                         </controls:SettingsExpanderItem.Footer>
                     </controls:SettingsExpanderItem>
                 </controls:SettingsExpander.Items>
@@ -340,12 +328,12 @@
                                        Header="普通消息停留（秒）"
                                        Description="没命中任何规则的消息在屏幕上停多久。1~3600">
                 <controls:SettingsExpander.Footer>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <WrapPanel Orientation="Horizontal">
                         <TextBox Text="{Binding Settings.NormalDurationSeconds, Mode=TwoWay}" Width="100" />
                         <ToggleSwitch IsChecked="{Binding Settings.NormalTopmost, Mode=TwoWay}"
                                       OnContent="置顶"
                                       OffContent="不置顶" />
-                    </StackPanel>
+                    </WrapPanel>
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
@@ -353,12 +341,12 @@
                                        Header="重要消息停留（秒）"
                                        Description="命中重要人物、重要关键词，或被 @ 的消息。1~3600">
                 <controls:SettingsExpander.Footer>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <WrapPanel Orientation="Horizontal">
                         <TextBox Text="{Binding Settings.ImportantDurationSeconds, Mode=TwoWay}" Width="100" />
                         <ToggleSwitch IsChecked="{Binding Settings.ImportantTopmost, Mode=TwoWay}"
                                       OnContent="置顶"
                                       OffContent="不置顶" />
-                    </StackPanel>
+                    </WrapPanel>
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
@@ -366,12 +354,12 @@
                                        Header="呼叫消息停留（秒）"
                                        Description="命中呼叫关键词的消息。默认十分钟，好让你从别的事情里抬起头。1~86400">
                 <controls:SettingsExpander.Footer>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <WrapPanel Orientation="Horizontal">
                         <TextBox Text="{Binding Settings.CallingDurationSeconds, Mode=TwoWay}" Width="100" />
                         <ToggleSwitch IsChecked="{Binding Settings.CallingTopmost, Mode=TwoWay}"
                                       OnContent="置顶"
                                       OffContent="不置顶" />
-                    </StackPanel>
+                    </WrapPanel>
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
@@ -379,7 +367,7 @@
                                        Header="长消息滚动速度"
                                        Description="一屏放不下的正文会自己滚动。拖到 0 就不滚，只显示开头。">
                 <controls:SettingsExpander.Footer>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <WrapPanel Orientation="Horizontal">
                         <Slider Value="{Binding Settings.RollingSpeed, Mode=TwoWay}"
                                 Minimum="0"
                                 Maximum="4"
@@ -390,7 +378,7 @@
                                    Width="40"
                                    TextAlignment="Right"
                                    VerticalAlignment="Center" />
-                    </StackPanel>
+                    </WrapPanel>
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 

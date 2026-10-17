@@ -4,57 +4,29 @@
         x:Class="QQListener.Views.Windows.QqMessageWindow"
         x:DataType="local:QqMessageWindow"
         SizeToContent="WidthAndHeight"
-        CanResize="False"
-        ShowInTaskbar="False"
-        SystemDecorations="None"
-        Background="Transparent"
-        TransparencyLevelHint="AcrylicBlur,Blur"
-        TransparencyBackgroundFallback="#25282D"
+        CanResize="False" ShowInTaskbar="False" ShowActivated="False"
+        SystemDecorations="None" Background="Transparent"
+        TransparencyLevelHint="AcrylicBlur,Transparent"
+        TransparencyBackgroundFallback="{DynamicResource SolidBackgroundFillColorSecondaryBrush}"
         Topmost="True">
-
-    <!-- 原生模糊与材质叠加负责背板；窗口紧贴卡片，不留会被系统模糊的外边距。
-         入场的位移做在窗口 Position 上（见 AnimateIn），不是卡片的 RenderTransform——
-         卡片一挪，它让出来的那条边就会露出窗口级的模糊背板。 -->
-    <!-- 宽度跟着内容走：写死 520 的话，一条"明天记得带作业"也要占满整张卡片，
-         右边一半全是空的。附件行那种本来就撑满的内容仍然会顶到 520。 -->
-    <Border x:Name="Card"
-            CornerRadius="12" MinWidth="300" MaxWidth="520"
-            HorizontalAlignment="Center" VerticalAlignment="Center"
-            ClipToBounds="True" Opacity="0">
-        <Border.Transitions>
-            <Transitions>
-                <!-- 对齐 PySide6 版：入场 500ms OutExpo。出场时长在代码里换成 300ms。 -->
-                <DoubleTransition Property="Opacity" Duration="0:0:0.5" Easing="ExponentialEaseOut" />
-            </Transitions>
-        </Border.Transitions>
-
-        <Panel>
-            <ExperimentalAcrylicBorder x:Name="AcrylicBackdrop" CornerRadius="12">
-                <ExperimentalAcrylicBorder.Material>
-                    <ExperimentalAcrylicMaterial BackgroundSource="Digger"
-                                                 TintColor="#20252B" TintOpacity="0.72"
-                                                 MaterialOpacity="0.88" FallbackColor="#25282D" />
-                </ExperimentalAcrylicBorder.Material>
-            </ExperimentalAcrylicBorder>
-
-            <!-- 性能模式下顶上来的纯色背板：不做实时模糊采样，低配机器上便宜得多。 -->
-            <Border x:Name="SolidBackdrop"
-                    CornerRadius="12"
-                    Background="#F2252A31"
-                    IsVisible="False" />
-
-            <Border Padding="18,14" CornerRadius="12"
-                    BorderBrush="#20FFFFFF" BorderThickness="1">
-                <StackPanel Spacing="10">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="420"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ContentControl x:Name="MessageContentHost" />
-                    </ScrollViewer>
-                    <!-- 没有回复栏时整个折叠掉：留着它，StackPanel 仍会在上面留一道
-                         行距，纯文字消息底部就多出一条没来由的空白。 -->
-                    <ContentControl x:Name="ReplyBarHost" IsVisible="False" />
-                </StackPanel>
-            </Border>
-        </Panel>
-    </Border>
+    <!-- Window height follows the viewport: native blur never extends above the island. -->
+    <Panel x:Name="DrawerViewport" ClipToBounds="True">
+        <Border x:Name="Card" CornerRadius="12" MinWidth="300" MaxWidth="520"
+                HorizontalAlignment="Center" VerticalAlignment="Top" ClipToBounds="True">
+            <Panel>
+                <Border x:Name="SurfaceBackdrop" CornerRadius="12"
+                        Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" Opacity="0.5" />
+                <Border x:Name="SurfaceFrame" Padding="18,14" CornerRadius="12"
+                        BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1">
+                    <StackPanel Spacing="12">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="420"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ContentControl x:Name="MessageContentHost" />
+                        </ScrollViewer>
+                        <ContentControl x:Name="ReplyBarHost" IsVisible="False" />
+                    </StackPanel>
+                </Border>
+            </Panel>
+        </Border>
+    </Panel>
 </Window>

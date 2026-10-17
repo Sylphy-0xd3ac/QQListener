@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using Avalonia;
-using Avalonia.Animation;
+using Avalonia.Media;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
@@ -24,16 +24,12 @@ public partial class QqMessageWindow : Window
     /// <summary>给 ClassIsland 顶栏让出的高度（逻辑像素）。</summary>
     private const double TopBarClearanceDip = 62;
 
-    /// <summary>入场时卡片从下方多少逻辑像素滑上来。对齐 PySide6 版的 50px。</summary>
-    private const double SlideDistanceDip = 50;
-
-    /// <summary>入场位移 600ms OutBack、淡入 500ms OutExpo、出场淡出 300ms——
-    /// 三个数都照抄 PySide6 版 <c>notify_window.py</c> 的 init_animation / close_animation。</summary>
-    private static readonly TimeSpan SlideDuration = TimeSpan.FromMilliseconds(600);
-    private static readonly TimeSpan EnterFade = TimeSpan.FromMilliseconds(500);
-    private static readonly TimeSpan ExitFade = TimeSpan.FromMilliseconds(300);
-
-    private static readonly Easing SlideEasing = new BackEaseOut();
+    private static readonly TimeSpan SlideDuration = TimeSpan.FromMilliseconds(380);
+    private static readonly TimeSpan ExitDuration = TimeSpan.FromMilliseconds(260);
+    private static readonly Easing SlideEasing = new CubicEaseOut();
+    private double _drawerProgress = 1;
+    private double _drawerHeight;
+    private DispatcherTimer? _placementTimer;
 
     private DispatcherTimer? _closeTimer;
     private DispatcherTimer? _slideTimer;
@@ -42,13 +38,7 @@ public partial class QqMessageWindow : Window
     private MessageContentView? _messageContent;
     private MessageReplyBar? _replyBar;
 
-    /// <summary>动画的落点。位移期间 <see cref="Window.Position"/> 会低于它，
-    /// 所以重新居中（SizeChanged）必须改这个锚点而不是直接写 Position，
-    /// 否则一次尺寸变化就会把正在滑动的窗口瞬移到终点。</summary>
     private PixelPoint _anchor;
-
-    /// <summary>当前离落点还差多少物理像素（向下为正）。</summary>
-    private double _slideOffset;
 
     private bool _performanceMode;
 
@@ -58,7 +48,7 @@ public partial class QqMessageWindow : Window
         DataContext = this;
     }
 
-    private QqMessageWindow(MessageEvent message, string downloadsDirectory)
+    private QqMessageWindow(MessageEvent message, string downloadsDirectory, string defaultReplyText)
     {
         SenderText = string.IsNullOrWhiteSpace(message.Sender) ? "未知发送者" : message.Sender;
         ConversationText = message.Conversation ?? "";
@@ -78,18 +68,17 @@ public partial class QqMessageWindow : Window
         var replyTarget = message.IsPendingDigest ? message.PendingMessages[^1] : message;
         if (replyTarget.CanReply)
         {
-            var replyBar = new MessageReplyBar(replyTarget);
+            var replyBar = new MessageReplyBar(replyTarget, defaultReplyText);
             if (message.IsPendingDigest)
                 replyBar.Children.Insert(0, new TextBlock
                 {
                     Text = $"回复最后一条：{replyTarget.DisplaySender}",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                    Foreground = Avalonia.Media.Brushes.White,
                     FontSize = 12
                 });
-            // 正在输入时别让窗口的自动关闭计时器把它收走；发完/取消后重新计满一轮展示时间。
-            replyBar.ComposerOpened += () => _closeTimer?.Stop();
-            replyBar.ComposerClosed += () => { if (!_closing) _closeTimer?.Start(); };
+            replyBar.SendStarted += () => _closeTimer?.Stop();
+            replyBar.SendFailed += () => { if (!_closing) _closeTimer?.Start(); };
+            replyBar.DismissRequested += SafeClose;
             var host = this.FindControl<ContentControl>("ReplyBarHost")!;
             host.Content = replyBar;
             host.IsVisible = true;
@@ -102,6 +91,7 @@ public partial class QqMessageWindow : Window
             _showTimer?.Dispose();
             _exitTimer?.Dispose();
             _closeTimer?.Stop();
+            _placementTimer?.Stop();
             StopSlide();
             _messageContent.Dispose();
             _replyBar?.Dispose();
@@ -119,17 +109,21 @@ public partial class QqMessageWindow : Window
     public bool IsNativeBackdropClipped { get; private set; }
     /// <summary>弹一个浮窗，到时自动关闭；交互不延长显示时间。</summary>
     public static QqMessageWindow ShowMessage(MessageEvent message, TimeSpan duration,
-        string? downloadsDirectory = null, bool topmost = true, bool performanceMode = false)
+        string? downloadsDirectory = null, bool topmost = true, bool performanceMode = false, string defaultReplyText = "收到")
     {
-        var window = new QqMessageWindow(message, downloadsDirectory ?? new QqListenerSettings().DownloadsDirectory)
+        var window = new QqMessageWindow(message, downloadsDirectory ?? new QqListenerSettings().DownloadsDirectory, defaultReplyText)
         {
             Topmost = topmost,
             _performanceMode = performanceMode
         };
-        window.ApplyPerformanceMode();
+        window.ApplyHostSurface();
         window.Opened += (_, _) =>
         {
+            window.ApplyHostSurface();
             window.PlaceOnScreen();
+            window._placementTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            window._placementTimer.Tick += (_, _) => window.PlaceOnScreen();
+            window._placementTimer.Start();
             var radius = window.FindControl<Border>("Card")!.CornerRadius.TopLeft;
             window.IsNativeBackdropClipped = NativeBackdropCorners.Apply(window, radius);
         };
@@ -167,86 +161,87 @@ public partial class QqMessageWindow : Window
         return window;
     }
 
-    /// <summary>屏幕正上方居中，贴在 ClassIsland 顶栏正下方。</summary>
+    private void ApplyHostSurface()
+    {
+        var backdrop = this.FindControl<Border>("SurfaceBackdrop")!;
+        if (ClassIslandSurface.Find() is { } host)
+        {
+            RequestedThemeVariant = host.Window.ActualThemeVariant;
+            backdrop.Background = host.Background.Background;
+            backdrop.Opacity = host.Background.Opacity;
+            this.FindControl<Border>("SurfaceFrame")!.BorderBrush = host.Background.BorderBrush;
+            TransparencyLevelHint = host.Window.TransparencyLevelHint;
+        }
+        if (_performanceMode)
+        {
+            TransparencyLevelHint = [WindowTransparencyLevel.None];
+            backdrop.Opacity = 1;
+        }
+    }
+
+    /// <summary>紧贴宿主可见岛的下沿；宿主不可见时退回屏幕顶部。</summary>
     private void PlaceOnScreen()
     {
-        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary ?? Screens.All.FirstOrDefault();
+        var host = ClassIslandSurface.Find();
+        var origin = host is { } surface
+            ? (PixelPoint?)ClassIslandSurface.BottomCenter(surface.Background)
+            : null;
+        var screen = origin is { } point ? Screens.ScreenFromPoint(point) : Screens.ScreenFromWindow(this);
+        screen ??= Screens.Primary ?? Screens.All.FirstOrDefault();
         if (screen is null) return;
-
         var area = screen.WorkingArea;
         var scale = screen.Scaling <= 0 ? 1 : screen.Scaling;
-        MaxWidth = area.Width / scale;
-        MaxHeight = Math.Max(100, area.Height / scale - TopBarClearanceDip);
-
-        // Bounds 是逻辑像素，Position 是物理像素——不换算就永远居不了中。
+        MaxWidth = Math.Min(520, area.Width / scale);
         var width = (int)Math.Round(Bounds.Width * scale);
-        _anchor = new PixelPoint(
-            area.X + Math.Max(0, (area.Width - width) / 2),
-            area.Y + (int)Math.Round(TopBarClearanceDip * scale));
-        ApplyPosition();
+        var center = origin?.X ?? area.X + area.Width / 2;
+        var top = origin?.Y ?? area.Y + (int)Math.Round(TopBarClearanceDip * scale);
+        top = Math.Clamp(top, area.Y, Math.Max(area.Y, area.Bottom - 100));
+        MaxHeight = Math.Max(100, (area.Bottom - top) / scale);
+        _anchor = new PixelPoint(Math.Clamp(center - width / 2, area.X, Math.Max(area.X, area.Right - width)), top);
+        Position = _anchor;
     }
 
-    private void ApplyPosition() =>
-        Position = new PixelPoint(_anchor.X, _anchor.Y + (int)Math.Round(_slideOffset));
-
-    /// <summary>性能模式：纯色背板顶掉毛玻璃，并且关掉窗口级透明度提示——
-    /// 实时模糊采样是这个浮窗最贵的一笔绘制开销。</summary>
-    private void ApplyPerformanceMode()
-    {
-        if (!_performanceMode) return;
-
-        TransparencyLevelHint = [WindowTransparencyLevel.None];
-        if (this.FindControl<Control>("AcrylicBackdrop") is { } acrylic) acrylic.IsVisible = false;
-        if (this.FindControl<Control>("SolidBackdrop") is { } solid) solid.IsVisible = true;
-        // 动画也一并去掉：Transitions 留着的话下面把 Opacity 设成 1 仍会走 500ms 补间。
-        if (this.FindControl<Border>("Card") is { } card) card.Transitions = null;
-    }
-
-    /// <summary>
-    /// 入场：卡片淡入（500ms OutExpo，走 XAML 里声明的 Transition），同时整个窗口从
-    /// 下方 50px 滑到位（600ms OutBack，带一点回弹）。位移做在窗口上而不是卡片上——
-    /// 卡片一挪，它让出来的那条边会露出窗口级的模糊背板。
-    /// </summary>
     private void AnimateIn()
     {
-        var card = this.FindControl<Border>("Card");
-        if (card is null) return;
-        card.Opacity = 1;
-
         if (_performanceMode) return;
-        StartSlideIn();
+        var card = this.FindControl<Border>("Card")!;
+        _drawerHeight = card.Bounds.Height;
+        if (_drawerHeight <= 0) return;
+        // Freeze the content's layout while only the clipped viewport changes height.
+        card.Height = _drawerHeight;
+        SetDrawerProgress(0);
+        AnimateDrawer(1, SlideDuration);
     }
 
-    private void StartSlideIn()
+    private void SetDrawerProgress(double progress)
     {
-        var scale = (Screens.ScreenFromWindow(this) ?? Screens.Primary)?.Scaling ?? 1;
-        if (scale <= 0) scale = 1;
-        var distance = SlideDistanceDip * scale;
+        _drawerProgress = progress;
+        this.FindControl<Panel>("DrawerViewport")!.Height = Math.Max(1, _drawerHeight * progress);
+        this.FindControl<Border>("Card")!.RenderTransform =
+            new TranslateTransform(0, -_drawerHeight * (1 - progress));
+    }
 
-        _slideOffset = distance;
-        ApplyPosition();
-
+    private void AnimateDrawer(double target, TimeSpan duration)
+    {
+        StopSlide();
+        var start = _drawerProgress;
         var clock = Stopwatch.StartNew();
         _slideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _slideTimer.Tick += (_, _) =>
         {
-            if (_closing)
-            {
-                StopSlide();
-                return;
-            }
-
-            var progress = Math.Clamp(clock.Elapsed.TotalMilliseconds / SlideDuration.TotalMilliseconds, 0, 1);
-            // BackEaseOut 会冲过 1 再弹回来，所以 offset 中途会变成负的（略微过冲到锚点上方），
-            // 这正是 PySide6 版 OutBack 的观感。
-            _slideOffset = distance * (1 - SlideEasing.Ease(progress));
-            ApplyPosition();
-
+            var progress = Math.Clamp(clock.Elapsed.TotalMilliseconds / duration.TotalMilliseconds, 0, 1);
+            SetDrawerProgress(start + (target - start) * SlideEasing.Ease(progress));
             if (progress >= 1)
             {
-                _slideOffset = 0;
-                ApplyPosition();
                 StopSlide();
+                if (target == 1)
+                {
+                    // Let late images and send-status text resize the card after entry.
+                    this.FindControl<Panel>("DrawerViewport")!.Height = double.NaN;
+                    var card = this.FindControl<Border>("Card")!;
+                    card.Height = double.NaN;
+                    card.RenderTransform = null;
+                }
             }
         };
         _slideTimer.Start();
@@ -258,7 +253,7 @@ public partial class QqMessageWindow : Window
         _slideTimer = null;
     }
 
-    /// <summary>淡出内容，动画结束后关闭原生窗口与模糊背板。幂等——可以被外部
+    /// <summary>向岛下沿收回抽屉，动画结束后关闭窗口。幂等——可以被外部
     /// （<see cref="Services.ClassIslandMessageNotifier"/> 强制收拢过多浮窗时）安全地重复调用。</summary>
     internal void SafeClose()
     {
@@ -276,18 +271,10 @@ public partial class QqMessageWindow : Window
             return;
         }
 
-        // 出场比入场快：500ms 淡入是为了让人注意到，300ms 淡出是为了别碍事。
-        card.Transitions =
-        [
-            new DoubleTransition
-            {
-                Property = OpacityProperty,
-                Duration = ExitFade,
-                Easing = new LinearEasing()
-            }
-        ];
-        card.Opacity = 0;
-        _exitTimer = DispatcherTimer.RunOnce(Close, ExitFade);
+        _drawerHeight = card.Bounds.Height;
+        card.Height = _drawerHeight;
+        if (_drawerHeight > 0) AnimateDrawer(0, ExitDuration);
+        _exitTimer = DispatcherTimer.RunOnce(Close, ExitDuration);
     }
 
     private bool _closing;

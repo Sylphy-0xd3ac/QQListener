@@ -86,7 +86,7 @@ public class ClassIslandMessageNotifier(QqListenerSettings settings)
     private void ShowFloatingWindow(MessageEvent messageEvent)
     {
         var window = QqMessageWindow.ShowMessage(messageEvent, GetDuration(messageEvent),
-            settings.DownloadsDirectory, GetTopmost(messageEvent.Importance), settings.PerformanceMode);
+            settings.DownloadsDirectory, GetTopmost(messageEvent.Importance), settings.PerformanceMode, settings.DefaultReplyText);
 
         QqMessageWindow? toClose = null;
         lock (_windowsGate)

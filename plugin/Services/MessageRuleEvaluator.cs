@@ -4,20 +4,13 @@ using System.Globalization;
 namespace QQListener.Services;
 
 public class MessageRuleEvaluator(
-    QqListenerSettings settings,
-    ILessonStateProvider? lessonState = null)
+    QqListenerSettings settings)
 {
     public MessageRuleEvaluationResult Evaluate(MessageEvent messageEvent)
     {
         var fullText = BuildSearchText(messageEvent);
 
-        // 上课优先于一切规则，重要人物和呼叫关键词也不例外——课堂上被打断本身就是
-        // 这个开关要挡的事，留后门等于没开关。想在上课时收特定的人，请改用时间段规则。
-        if (settings.DisableDuringClass && lessonState?.IsOnClass == true)
-        {
-            return Ignore(messageEvent, "正在上课，已按设置静音");
-        }
-
+        // Class-time suppression belongs to the delivery queue, so matching messages survive.
         var blacklist = settings.Blacklist.FirstOrDefault(x => Contains(fullText, x));
         if (!string.IsNullOrWhiteSpace(blacklist))
         {

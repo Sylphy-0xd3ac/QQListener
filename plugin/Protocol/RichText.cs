@@ -74,7 +74,23 @@ public static class RichText
 
         var richText = Wire.FieldBytes(fields, 1);
         if (richText.Length > 0)
+        {
             segments.AddRange(ParseElems(richText, isGroup));
+            var richFields = Wire.DecodeFields(richText);
+            var richFileData = Wire.FieldBytes(richFields, 3);
+            if (richFileData.Length > 0 && ParseC2cFile(Wire.EncodeBytesField(1, richFileData)) is { } richFile)
+                segments.Add(richFile);
+            var voice = Wire.FieldBytes(richFields, 4);
+            if (voice.Length > 0)
+            {
+                var ptt = Wire.DecodeFields(voice);
+                segments.Add(new Segment
+                {
+                    Type = "record", Name = Wire.FieldString(ptt, 5),
+                    Extra = { ["duration"] = Wire.FieldInt(ptt, 19) }
+                });
+            }
+        }
 
         var msgContent = Wire.FieldBytes(fields, 2);
         if (msgContent.Length > 0 && ParseC2cFile(msgContent) is { } file)
@@ -443,6 +459,7 @@ public static class RichText
         if (fileData.Length == 0) return null;
 
         var fileInfo = Wire.DecodeFields(fileData);
+        if (Wire.FieldInt(fileInfo, 12) == 2) return null;
         var fileId = Wire.FieldString(fileInfo, 3);
         if (fileId.Length == 0) return null;
 

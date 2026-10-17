@@ -126,7 +126,7 @@ public sealed class ReleaseMetadataVerifierTests
     }
 
     [Fact]
-    public void PackageRequiresEveryVersionToBe2000()
+    public void PackageRequiresEveryVersionToBe2100()
     {
         using var fixture = ReleaseFixture.Create(
             version: "1.0.0.0",
@@ -823,7 +823,7 @@ public sealed class ReleaseMetadataVerifierTests
     private static string ManifestWithExactSize(int size)
     {
         const string prefix =
-            "id: QQListener\nversion: 2.0.0.0\nentranceAssembly: QQListener.dll\n#";
+            "id: QQListener\nversion: 2.1.0.0\nentranceAssembly: QQListener.dll\n#";
         Assert.True(prefix.Length <= size);
         return prefix + new string('x', size - prefix.Length);
     }
@@ -941,7 +941,7 @@ public sealed class ReleaseMetadataVerifierTests
             IReadOnlyList<ArchiveItem>? extraEntries = null,
             string? checksumOverride = null,
             bool corruptEmbeddedDll = false,
-            string version = "2.0.0.0",
+            string version = "2.1.0.0",
             string? embeddedDllPath = null)
         {
             var path = System.IO.Path.Combine(

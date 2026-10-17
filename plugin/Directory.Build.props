@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <QQListenerVersion>2.0.0.0</QQListenerVersion>
+    <QQListenerVersion>2.1.0.0</QQListenerVersion>
     <ClassIslandPluginSdkVersion>2.1.0.1</ClassIslandPluginSdkVersion>
     <QQListenerTargetFramework Condition="'$(QQListenerTargetFramework)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">net8.0-windows10.0.19041.0</QQListenerTargetFramework>
     <QQListenerTargetFramework Condition="'$(QQListenerTargetFramework)' == ''">net8.0</QQListenerTargetFramework>

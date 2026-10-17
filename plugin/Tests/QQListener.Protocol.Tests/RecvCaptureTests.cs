@@ -7,6 +7,22 @@ namespace QQListener.Protocol.Tests;
 public class RecvCaptureTests
 {
     [Fact]
+    public void LoginStateSuppliesSelfAccountWhenThePacketOmitsIt()
+    {
+        var response = Pb.Cat(Pb.VarintField(1, 10000), Pb.LenField(8, Pb.VarintField(1, 123456)));
+        var message = Pb.Cat(Pb.LenField(1, response), Pb.LenField(2, Pb.VarintField(1, 82)),
+            Pb.LenField(3, Pb.LenField(1, Pb.Rich(Pb.TextElem("自己发的")))));
+        var transport = new FakeTransport([
+            Hqp1.EncodeFrame(PipeOp.LoginState, flags: Hqp1.FlagLoggedIn, msg: "10000"),
+            Hqp1.EncodeFrame(PipeOp.RecvPacket, cmd: "trpc.msg.olpush.OlPushService.MsgPush",
+                body: Pb.LenField(1, message))
+        ]);
+        var got = new List<CapturedMessage>();
+        new RecvCapture(1, got.Add, _ => transport).Run();
+        Assert.True(Assert.Single(got).IsSelf);
+    }
+
+    [Fact]
     public void NonMessageCmdsDoNotProduceAMessage()
     {
         // 非消息 cmd 不该产出；真消息路径由 SsoDecodeTests 的 fixture 覆盖。

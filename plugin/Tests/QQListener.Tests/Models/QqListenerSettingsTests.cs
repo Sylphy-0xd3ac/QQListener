@@ -8,6 +8,23 @@ namespace QQListener.Tests.Models;
 public sealed class QqListenerSettingsTests
 {
     [Fact]
+    public void OldSettingsGetSelfExclusionAndNewOptionsRoundTripWithBounds()
+    {
+        var settings = JsonSerializer.Deserialize<QqListenerSettings>("{}")!;
+        Assert.True(settings.ExcludeSelfMessages);
+        Assert.Equal("收到", settings.DefaultReplyText);
+        Assert.Equal(0, settings.AfterClassDelaySeconds);
+        settings.AfterClassDelaySeconds = 99999;
+        settings.DefaultReplyText = "  好的，已收到  ";
+        settings.ExcludeSelfMessages = false;
+        settings.Normalize();
+        var loaded = JsonSerializer.Deserialize<QqListenerSettings>(JsonSerializer.Serialize(settings))!;
+        Assert.Equal(3600, loaded.AfterClassDelaySeconds);
+        Assert.Equal("好的，已收到", loaded.DefaultReplyText);
+        Assert.False(loaded.ExcludeSelfMessages);
+    }
+
+    [Fact]
     public void OldSettingsDefaultToTtsOnlyAndAudioChoicesRoundTrip()
     {
         var old = JsonSerializer.Deserialize<QqListenerSettings>("{}")!;

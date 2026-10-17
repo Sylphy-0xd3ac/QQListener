@@ -39,6 +39,13 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
     private readonly Func<int>? _getPendingLimit;
     private readonly PendingQueue<MessageEvent> _pendingQueue = new();
     private bool _wasPaused;
+    private bool _wasOnClass;
+    private DateTimeOffset? _classReleaseAt;
+    private readonly object _deliveryGate = new();
+    private readonly Func<bool>? _isOnClass;
+    private readonly Func<int>? _getAfterClassDelaySeconds;
+    private readonly Func<bool>? _excludeSelfMessages;
+    private readonly TimeProvider _time;
 
     /// <summary>消息落进 <see cref="_queue"/> 时完成一次，用来即时唤醒轮询方。
     /// 每次唤醒后换一个新的实例，等价于一个 auto-reset 事件。</summary>
@@ -54,7 +61,11 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         Action? resetState = null,
         Func<CoreState>? getCoreState = null,
         NativeMessageEnrichment? enrichment = null,
-        Func<int>? getPendingLimit = null)
+        Func<int>? getPendingLimit = null,
+        Func<bool>? isOnClass = null,
+        Func<int>? getAfterClassDelaySeconds = null,
+        Func<bool>? excludeSelfMessages = null,
+        TimeProvider? timeProvider = null)
     {
         _getActivePids = getActivePids;
         _connectTransport = connectTransport;
@@ -66,6 +77,10 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         _getCoreState = getCoreState;
         _enrichment = enrichment;
         _getPendingLimit = getPendingLimit;
+        _isOnClass = isOnClass;
+        _getAfterClassDelaySeconds = getAfterClassDelaySeconds;
+        _excludeSelfMessages = excludeSelfMessages;
+        _time = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>真实接线：走命名管道，把连接状态变化同步进 <see cref="CoreRuntime"/>，
@@ -75,8 +90,15 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         CoreService coreService,
         MessageEventPipeline pipeline,
         NativeMessageEnrichment enrichment,
-        QqListenerSettings settings) => new(
-        () => [.. coreService.ActivePids],
+        QqListenerSettings settings,
+        ILessonStateProvider lessonState,
+        TimeProvider timeProvider) => new(
+        () =>
+        {
+            // Also start when the source is used: supports hosts that resolve providers lazily.
+            coreService.Start();
+            return [.. coreService.ActivePids];
+        },
         name => new NamedPipeTransport(name),
         onCaptureConnected: pid =>
             CoreRuntime.Set(CoreRuntimeState.Connected, "已连接到 QQ 接收管道", pid),
@@ -92,37 +114,55 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         resetState: pipeline.ClearState,
         getCoreState: CoreController.GetState,
         enrichment: enrichment,
-        getPendingLimit: () => settings.PendingQueueLimit);
+        getPendingLimit: () => settings.PendingQueueLimit,
+        isOnClass: () => settings.DisableDuringClass && lessonState.IsOnClass,
+        getAfterClassDelaySeconds: () => settings.DisableDuringClass ? settings.AfterClassDelaySeconds : 0,
+        excludeSelfMessages: () => settings.ExcludeSelfMessages,
+        timeProvider: timeProvider);
 
     public Task<QqNotificationPollResult> PollAsync(bool retryPermission, CancellationToken cancellationToken)
     {
         Reconcile();
 
         cancellationToken.ThrowIfCancellationRequested();
-        var state = _getCoreState?.Invoke() ?? CoreState.Running;
-        if (state == CoreState.Detached)
+        lock (_deliveryGate)
         {
-            _pendingQueue.Clear();
-            while (_queue.TryDequeue(out _)) { }
-            _wasPaused = false;
-            return Task.FromResult(new QqNotificationPollResult(WindowsNotificationReadStatus.Success, [], ""));
+            var state = _getCoreState?.Invoke() ?? CoreState.Running;
+            if (state == CoreState.Detached)
+            {
+                _pendingQueue.Clear();
+                while (_queue.TryDequeue(out _)) { }
+                _wasPaused = _wasOnClass = false;
+                _classReleaseAt = null;
+                return Task.FromResult(new QqNotificationPollResult(WindowsNotificationReadStatus.Success, [], ""));
+            }
+            var paused = ShouldHold(state);
+            var events = new List<MessageEvent>();
+            while (_queue.TryDequeue(out var evt))
+            {
+                if (paused || _wasPaused) _pendingQueue.Push(evt, _getPendingLimit?.Invoke());
+                else events.Add(evt);
+            }
+            if (!paused)
+            {
+                var (backlog, dropped) = _pendingQueue.Drain();
+                if (PendingMessageDigest.Create(backlog, dropped) is { } digest) events.Insert(0, digest);
+            }
+            _wasPaused = paused;
+            return Task.FromResult(new QqNotificationPollResult(WindowsNotificationReadStatus.Success, events,
+                paused ? "消息正在积压（暂停、上课或课后延迟）" : ""));
         }
-        var paused = state == CoreState.Paused;
-        var events = new List<MessageEvent>();
+    }
 
-        // 恢复前已到达但尚未轮询的消息，也并入这次摘要，避免恢复时连弹多个窗口。
-        while (_queue.TryDequeue(out var evt))
-        {
-            if (paused || _wasPaused) _pendingQueue.Push(evt, _getPendingLimit?.Invoke());
-            else events.Add(evt);
-        }
-        if (_wasPaused && !paused)
-        {
-            var (backlog, dropped) = _pendingQueue.Drain();
-            if (PendingMessageDigest.Create(backlog, dropped) is { } digest) events.Add(digest);
-        }
-        _wasPaused = paused;
-        return Task.FromResult(new QqNotificationPollResult(WindowsNotificationReadStatus.Success, events, ""));
+    private bool ShouldHold(CoreState state)
+    {
+        var onClass = _isOnClass?.Invoke() == true;
+        var now = _time.GetUtcNow();
+        var delay = Math.Clamp(_getAfterClassDelaySeconds?.Invoke() ?? 0, 0, 3600);
+        if (onClass || delay == 0) _classReleaseAt = null;
+        else if (_wasOnClass) _classReleaseAt = now.AddSeconds(delay);
+        _wasOnClass = onClass;
+        return state == CoreState.Paused || onClass || _classReleaseAt > now;
     }
 
     /// <summary>原生捕获没有"通知访问权限"这回事；但仍然要清空规则管线的去重/冷却状态，
@@ -191,6 +231,7 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
     /// </summary>
     private void ProcessMessage(CapturedMessage message)
     {
+        if ((_excludeSelfMessages?.Invoke() ?? true) && message.IsSelf) return;
         _enrichment?.EnrichSenderProfile(message);
 
         var evt = NativeMessageEventFactory.From(message);
@@ -200,7 +241,21 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         // Segments 是 CapturedMessage 和 MessageEvent 共享的同一份列表引用
         // （NativeMessageEventFactory.From 没有拷贝），这里补的 Url 对 accepted 同样生效。
         _enrichment?.EnrichSegments(message);
-        _queue.Enqueue(accepted);
+        lock (_deliveryGate)
+        {
+            if (_disposed) return;
+            var state = _getCoreState?.Invoke() ?? CoreState.Running;
+            if (state == CoreState.Detached) return;
+            if (ShouldHold(state))
+            {
+                // Messages queued just before the pause must precede messages received during it.
+                while (_queue.TryDequeue(out var earlier))
+                    _pendingQueue.Push(earlier, _getPendingLimit?.Invoke());
+                _pendingQueue.Push(accepted, _getPendingLimit?.Invoke());
+                _wasPaused = true;
+            }
+            else _queue.Enqueue(accepted);
+        }
         // 先入队再叫醒：被唤醒的一方一定能看到这条消息。
         Interlocked.Exchange(ref _arrival, CreateArrivalSignal()).TrySetResult(true);
     }
@@ -250,7 +305,10 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
             _running.Clear();
         }
         foreach (var capture in captures) capture.Stop();
-        _pendingQueue.Clear();
-        while (_queue.TryDequeue(out _)) { }
+        lock (_deliveryGate)
+        {
+            _pendingQueue.Clear();
+            while (_queue.TryDequeue(out _)) { }
+        }
     }
 }

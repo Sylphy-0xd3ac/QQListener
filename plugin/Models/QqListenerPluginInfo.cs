@@ -10,7 +10,7 @@ public sealed class QqListenerPluginInfo
     /// 与 QQListener.csproj 的 <ClassIslandPluginSdkVersion> 同步维护。
     /// SDK 当前未公开运行时元数据 API，所以暂时双写。
     /// </summary>
-    public const string DefaultSdkVersion = "1.7.106.2-dev-v2";
+    public const string DefaultSdkVersion = "2.1.0.1";
 
     public const string DefaultLicense = "MIT";
     public const string DefaultCopyrightYear = "2026";
@@ -32,7 +32,7 @@ public sealed class QqListenerPluginInfo
     public string SdkVersion { get; init; } = DefaultSdkVersion;
     public string License { get; init; } = DefaultLicense;
 
-    /// <summary>页头右侧小字："v2.0.0.0 · 原生捕获内核"。</summary>
+    /// <summary>页头右侧小字："v2.1.0.0 · 原生捕获内核"。</summary>
     public string HeaderLine =>
         $"{VersionDisplay} · {(OperatingSystem.IsWindows() ? "原生捕获内核" : "当前平台不支持捕获")}";
 

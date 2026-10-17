@@ -99,55 +99,14 @@ public sealed class MessageRuleEvaluatorTests
         Assert.Equal(MessageImportance.Normal, result.Event.Importance);
     }
 
-    [Theory]
-    [InlineData(true, true, true)]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    public void OnClassSilencesEverythingWhenTheSettingIsOn(bool setting, bool onClass, bool ignored)
-    {
-        var settings = new QqListenerSettings { DisableDuringClass = setting };
-
-        var result = new MessageRuleEvaluator(settings, new FakeLessonState(onClass))
-            .Evaluate(Event("qq.native", "normal", "12:00"));
-
-        Assert.Equal(ignored, result.IsIgnored);
-        if (ignored) Assert.Equal("正在上课，已按设置静音", result.Reason);
-    }
-
-    /// <summary>上课优先于一切规则：留后门等于没这个开关。</summary>
     [Fact]
-    public void OnClassOutranksImportantPeopleAndTheCallingKeyword()
+    public void OnClassPreservesClassificationForDeferredDelivery()
     {
-        var settings = new QqListenerSettings
-        {
-            DisableDuringClass = true,
-            ImportantPersonsText = "Alice",
-            CallingEnabled = true,
-            CallingKeyword = "call"
-        };
-
-        var result = new MessageRuleEvaluator(settings, new FakeLessonState(true))
+        var settings = new QqListenerSettings { DisableDuringClass = true, CallingKeyword = "call" };
+        var result = new MessageRuleEvaluator(settings)
             .Evaluate(Event("qq.native", "call", "12:00"));
-
-        Assert.True(result.IsIgnored);
-        Assert.Equal(MessageImportance.Ignored, result.Event.Importance);
-    }
-
-    /// <summary>拿不到课表服务时不该把消息全静音——宁可多弹一条。</summary>
-    [Fact]
-    public void MissingLessonServiceIsTreatedAsOffClass()
-    {
-        var settings = new QqListenerSettings { DisableDuringClass = true };
-
-        Assert.False(new MessageRuleEvaluator(settings)
-            .Evaluate(Event("qq.native", "normal", "12:00")).IsIgnored);
-        Assert.False(new MessageRuleEvaluator(settings, new AlwaysOffClassProvider())
-            .Evaluate(Event("qq.native", "normal", "12:00")).IsIgnored);
-    }
-
-    private sealed class FakeLessonState(bool onClass) : ILessonStateProvider
-    {
-        public bool IsOnClass { get; } = onClass;
+        Assert.False(result.IsIgnored);
+        Assert.Equal(MessageImportance.Calling, result.Event.Importance);
     }
 
     [Theory]

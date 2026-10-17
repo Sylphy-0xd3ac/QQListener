@@ -9,7 +9,7 @@ namespace QQListener.Services;
 ///
 /// 只有原生捕获来源（<see cref="MessageEvent.CanReply"/>）才带有回复所需的路由信息
 /// （所在 QQ 进程、场景、对端号/uid、原始序列号）；toast 来源没法回复。
-/// 群聊回复自动带上引用（SrcMsg），私聊按普通消息发送——跟 <see cref="QqControlApi"/>
+/// 回复带上原消息引用（SrcMsg）——跟 <see cref="QqControlApi"/>
 /// 本身的语义一致。
 /// </summary>
 public sealed class MessageReplyService(Func<int, IPipeTransport>? connect = null)

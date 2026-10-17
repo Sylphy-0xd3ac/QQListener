@@ -33,7 +33,7 @@ public partial class KernelSetupViewModel : ObservableObject
         ? "原生捕获仅在 Windows x64 上可用"
         : IsInstalled
             ? $"内核 {CurrentVersionText} · {ControlStateText}"
-            : "内核尚未安装，点右边的安装向导下载";
+            : "内核尚未安装，请在高级设置中重新触发安装向导";
 
     [ObservableProperty]
     private string _latestVersionText = "尚未检查";

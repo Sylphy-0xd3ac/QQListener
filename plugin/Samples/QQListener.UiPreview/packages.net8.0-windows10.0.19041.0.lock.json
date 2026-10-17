@@ -24,6 +24,35 @@
           "Avalonia": "11.3.17"
         }
       },
+      "ClassIsland.Core": {
+        "type": "Direct",
+        "requested": "[2.1.0.1, )",
+        "resolved": "2.1.0.1",
+        "contentHash": "tIjrxgqb41D5a/SQRoDC99CU3TR4rq6FH+t1MgbTs8Nd7diubrBitivQqANZCtWHGY4tILaLJInbbXGc2xlLVg==",
+        "dependencies": {
+          "AsyncImageLoader.Avalonia": "3.3.0",
+          "Avalonia": "11.3.17",
+          "Avalonia.Controls.ColorPicker": "11.3.17",
+          "Avalonia.Desktop": "11.3.17",
+          "Avalonia.Labs.CommandManager": "11.3.0",
+          "ClassIsland.Markdown.Avalonia": "11.0.3.4",
+          "ClassIsland.Platforms.Abstractions": "2.1.0.1",
+          "ClassIsland.Shared": "2.1.0.1",
+          "ClassIsland.Shared.IPC": "2.1.0.1",
+          "FluentAvaloniaUI": "2.4.1",
+          "Lib.Harmony.Thin": "2.4.2",
+          "Microsoft.Extensions.Configuration.UserSecrets": "8.0.0",
+          "Microsoft.Extensions.Hosting": "8.0.0",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.0",
+          "MoonSharp": "2.0.0",
+          "Octokit": "9.1.0",
+          "ReactiveUI": "20.2.45",
+          "SoundFlow": "1.2.1",
+          "System.Text.Encoding.CodePages": "8.0.0",
+          "Xaml.Behaviors": "11.3.9.5",
+          "YamlDotNet": "16.3.0"
+        }
+      },
       "CommunityToolkit.Mvvm": {
         "type": "Direct",
         "requested": "[8.2.1, )",
@@ -185,34 +214,6 @@
         "contentHash": "IvRac9JMxSzwplQNXk4yR1BX/XimLLgVjhwo8/P2kDBG+n2bG8uWqJ6j1cWuudQdNXr9Wky5u07qvSmTurIomw==",
         "dependencies": {
           "Avalonia": "11.3.6"
-        }
-      },
-      "ClassIsland.Core": {
-        "type": "Transitive",
-        "resolved": "2.1.0.1",
-        "contentHash": "tIjrxgqb41D5a/SQRoDC99CU3TR4rq6FH+t1MgbTs8Nd7diubrBitivQqANZCtWHGY4tILaLJInbbXGc2xlLVg==",
-        "dependencies": {
-          "AsyncImageLoader.Avalonia": "3.3.0",
-          "Avalonia": "11.3.17",
-          "Avalonia.Controls.ColorPicker": "11.3.17",
-          "Avalonia.Desktop": "11.3.17",
-          "Avalonia.Labs.CommandManager": "11.3.0",
-          "ClassIsland.Markdown.Avalonia": "11.0.3.4",
-          "ClassIsland.Platforms.Abstractions": "2.1.0.1",
-          "ClassIsland.Shared": "2.1.0.1",
-          "ClassIsland.Shared.IPC": "2.1.0.1",
-          "FluentAvaloniaUI": "2.4.1",
-          "Lib.Harmony.Thin": "2.4.2",
-          "Microsoft.Extensions.Configuration.UserSecrets": "8.0.0",
-          "Microsoft.Extensions.Hosting": "8.0.0",
-          "Microsoft.Extensions.Hosting.Abstractions": "8.0.0",
-          "MoonSharp": "2.0.0",
-          "Octokit": "9.1.0",
-          "ReactiveUI": "20.2.45",
-          "SoundFlow": "1.2.1",
-          "System.Text.Encoding.CodePages": "8.0.0",
-          "Xaml.Behaviors": "11.3.9.5",
-          "YamlDotNet": "16.3.0"
         }
       },
       "ClassIsland.Markdown.Avalonia": {
