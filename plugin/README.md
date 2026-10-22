@@ -72,4 +72,6 @@ QQListener 提供以下自动化 Trigger ID，供你在 ClassIsland 工作流中
 
 当前迁移工作区的富消息预览、验证命令和未完成项见 [迁移状态](docs/PORT_STATUS.md)。
 
+发布包在 `plugin` 目录执行 `dotnet build QQListener.csproj --configuration Release -p:CreateCipx=true` 生成，输出为 `cipx/QQListener.cipx`。打包固定使用 Windows 专用目标 `net8.0-windows10.0.19041.0`，包含 Windows SDK 和 WinRT 运行库；macOS 上执行同一命令会交叉编译 Windows 包。若使用 `--no-restore`，须先用相同的 `-p:CreateCipx=true` 参数还原依赖。普通构建和测试仍按当前平台选择目标。
+
 历史标签 `1.0.2.0` 指向清单版本为 `1.0.1.0` 的历史提交，保留不动。发布版本以 `Directory.Build.props` 的 `QQListenerVersion` 和 `manifest.yml` 的四段式版本为准。

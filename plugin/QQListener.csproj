@@ -70,6 +70,12 @@
         </None>
     </ItemGroup>
 
+    <Target Name="ValidateCipxTargetFramework" BeforeTargets="PrepareForBuild"
+            Condition="'$(CreateCipx)' == 'true'">
+        <Error Condition="'$(TargetFramework)' != 'net8.0-windows10.0.19041.0'"
+               Text="CIPX packages must target net8.0-windows10.0.19041.0." />
+    </Target>
+
     <Target Name="SyncLocalClassIslandDebugPlugin" AfterTargets="Build"
             Condition="'$(Configuration)' == 'Debug' and Exists('..\ClassIsland\ClassIsland.Desktop\bin\Debug\net8.0-windows10.0.19041.0')">
         <PropertyGroup>

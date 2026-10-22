@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using YamlDotNet.RepresentationModel;
 using Xunit;
 
@@ -139,6 +140,36 @@ public sealed class WorkflowTests
         Assert.Contains("plugin/artifacts/test-results/*.trx", yaml, StringComparison.Ordinal);
         Assert.Contains("plugin/artifacts/ui-previews/*.png", yaml, StringComparison.Ordinal);
         Assert.DoesNotContain(".dll", yaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CipxBuildSelectsWindowsTargetBeforePlatformDefaults()
+    {
+        var root = FindProjectRoot();
+        var properties = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
+        var frameworkProperties = properties.Descendants("QQListenerTargetFramework").ToArray();
+
+        Assert.Equal("'$(CreateCipx)' == 'true'", (string?)frameworkProperties[0].Attribute("Condition"));
+        Assert.Equal("net8.0-windows10.0.19041.0", frameworkProperties[0].Value);
+        Assert.All(frameworkProperties.Skip(1), property =>
+            Assert.Contains("'$(QQListenerTargetFramework)' == ''", (string?)property.Attribute("Condition")));
+        var windowsTargeting = Assert.Single(properties.Descendants("EnableWindowsTargeting"));
+        Assert.Equal("'$(CreateCipx)' == 'true'", (string?)windowsTargeting.Attribute("Condition"));
+        Assert.Equal("true", windowsTargeting.Value);
+    }
+
+    [Fact]
+    public void CipxBuildRejectsNonWindowsTargetOverrides()
+    {
+        var root = FindProjectRoot();
+        var project = XDocument.Load(Path.Combine(root, "QQListener.csproj"));
+        var validation = Assert.Single(project.Descendants("Target"), target =>
+            (string?)target.Attribute("Name") == "ValidateCipxTargetFramework");
+
+        Assert.Equal("PrepareForBuild", (string?)validation.Attribute("BeforeTargets"));
+        Assert.Equal("'$(CreateCipx)' == 'true'", (string?)validation.Attribute("Condition"));
+        var error = Assert.Single(validation.Elements("Error"));
+        Assert.Equal("'$(TargetFramework)' != 'net8.0-windows10.0.19041.0'", (string?)error.Attribute("Condition"));
     }
 
     private static IReadOnlyList<WorkflowStep> ReadBuildSteps(YamlDocument document)
