@@ -43,18 +43,21 @@ public class CoreServiceTests : IDisposable
     public void ReconcileRunningInjectsEachPidOnce()
     {
         var injected = new List<(int Pid, string Path)>();
+        var recheckedPids = new List<int>();
         var service = new CoreService(
             enumeratePids: () => [11, 22],
             findBinary: () => "C:/native/hook.dll",
             injectFunc: (pid, path) => { injected.Add((pid, path)); return Handle(pid); },
             unloadFunc: (_, _) => { },
             hookActive: _ => false,
+            recheckMainProcess: pid => { recheckedPids.Add(pid); return true; },
             supported: true);
 
         service.Reconcile(CoreState.Running);
         service.Reconcile(CoreState.Running);
 
         Assert.Equal([(11, "C:/native/hook.dll"), (22, "C:/native/hook.dll")], injected);
+        Assert.Equal([11, 22], recheckedPids);
         Assert.Equal(new Dictionary<int, MapHandle> { [11] = Handle(11), [22] = Handle(22) }, service.Handles);
     }
 
@@ -68,6 +71,7 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, _) => Handle(pid),
             unloadFunc: (pid, handle) => unloaded.Add((pid, handle)),
             hookActive: _ => false,
+            recheckMainProcess: _ => true,
             supported: true);
         service.Reconcile(CoreState.Running);
 
@@ -87,6 +91,7 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, _) => Handle(pid),
             unloadFunc: (pid, handle) => unloaded.Add((pid, handle)),
             hookActive: pid => pid == 22,
+            recheckMainProcess: _ => true,
             supported: true);
         service.Reconcile(CoreState.Running);
 
@@ -107,6 +112,7 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, _) => Handle(pid),
             unloadFunc: (pid, handle) => unloaded.Add((pid, handle)),
             hookActive: _ => false,
+            recheckMainProcess: _ => true,
             supported: true);
         service.Reconcile(CoreState.Running);
         pids.Clear();
@@ -133,6 +139,7 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, _) => Handle(pid),
             unloadFunc: (_, _) => { },
             hookActive: _ => false,
+            recheckMainProcess: _ => true,
             supported: true);
         service.Reconcile(CoreState.Running);
         shouldFail = true;
@@ -152,6 +159,7 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, path) => { injected.Add((pid, path)); return Handle(pid); },
             unloadFunc: (pid, handle) => unloaded.Add((pid, handle)),
             hookActive: _ => true,
+            recheckMainProcess: _ => true,
             supported: true);
 
         service.Reconcile(CoreState.Running);
@@ -174,6 +182,7 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, _) => Handle(pid),
             unloadFunc: (_, _) => { },
             hookActive: _ => false,
+            recheckMainProcess: _ => true,
             supported: true);
 
         var error = Assert.Throws<FileNotFoundException>(() => service.Reconcile(CoreState.Running));
@@ -214,6 +223,7 @@ public class CoreServiceTests : IDisposable
             findBinary: () => "hook.dll",
             injectFunc: (_, _) => handle,
             hookActive: _ => false,
+            recheckMainProcess: _ => true,
             supported: true);
 
         service.Reconcile(CoreState.Running);
@@ -231,6 +241,7 @@ public class CoreServiceTests : IDisposable
             findBinary: () => "hook.dll",
             injectFunc: (pid, _) => Handle(pid),
             hookActive: _ => false,
+            recheckMainProcess: _ => true,
             supported: true);
 
         service.Reconcile(CoreState.Running);

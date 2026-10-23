@@ -60,11 +60,14 @@ public sealed class WorkflowTests
         Assert.Equal(23, samples.RootElement.GetArrayLength());
     }
 
-    [Fact]
-    public void RepositoryWorkflowBuildsVerifiedWindowsPackageAfterCrossPlatformChecks()
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void RepositoryWorkflowBuildsVerifiedWindowsPackageAfterCrossPlatformChecks(string lineEnding)
     {
         var root = FindProjectRoot();
-        var yaml = File.ReadAllText(Path.Combine(root, ".github", "workflows", "build.yml"));
+        var yaml = File.ReadAllText(Path.Combine(root, ".github", "workflows", "build.yml"))
+            .ReplaceLineEndings(lineEnding);
         var stream = new YamlStream();
         stream.Load(new StringReader(yaml));
         var document = Assert.Single(stream.Documents);
@@ -109,7 +112,12 @@ public sealed class WorkflowTests
         Assert.Equal("actions/upload-artifact@v4", evidenceUpload.Uses);
         Assert.Contains("global-json-file: global.json", yaml, StringComparison.Ordinal);
         Assert.Contains("cache-dependency-path: '**/packages.*.lock.json'", yaml, StringComparison.Ordinal);
-        Assert.Contains("branches:\n      - main", yaml, StringComparison.Ordinal);
+        var triggers = Mapping(mapping, "on");
+        foreach (var eventName in new[] { "push", "pull_request" })
+        {
+            var branches = Assert.IsType<YamlSequenceNode>(Value(Mapping(triggers, eventName), "branches"));
+            Assert.Equal("main", Assert.IsType<YamlScalarNode>(Assert.Single(branches.Children)).Value);
+        }
         Assert.Contains("'[0-9]*.[0-9]*.[0-9]*.[0-9]*'", yaml, StringComparison.Ordinal);
         Assert.Contains("cipx/QQListener.cipx", yaml, StringComparison.Ordinal);
         Assert.Contains("cipx/checksums.md", yaml, StringComparison.Ordinal);
