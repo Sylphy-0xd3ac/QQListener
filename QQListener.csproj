@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>$(QQListenerTargetFramework)</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <EnableDynamicLoading>True</EnableDynamicLoading>
+        <Version>$(QQListenerVersion)</Version>
+        <AssemblyVersion>$(QQListenerVersion)</AssemblyVersion>
+        <FileVersion>$(QQListenerVersion)</FileVersion>
+        <InformationalVersion>$(QQListenerVersion)</InformationalVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Remove="Samples\**\*.cs;Tests\**\*.cs;Tools\**\*.cs" />
+        <AvaloniaResource Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
+        <AvaloniaXaml Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
+        <Content Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
+        <EmbeddedResource Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
+        <None Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)">
+            <ExcludeAssets>runtime; native</ExcludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="Assets/Sounds/notify_sound.mp3"
+                 CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets/Sounds/important_sound.mp3"
+                 CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+        <AvaloniaResource Include="icon.png" />
+        <None Update="manifest.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="README.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="CHANGELOG.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="LICENSE;DEVELOPMENT.md;docs/usage.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </None>
+        <None Update="icon.png">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+    <Target Name="ValidateCipxTargetFramework" BeforeTargets="PrepareForBuild"
+            Condition="'$(CreateCipx)' == 'true'">
+        <Error Condition="'$(TargetFramework)' != 'net8.0-windows10.0.19041.0'"
+               Text="CIPX packages must target net8.0-windows10.0.19041.0." />
+    </Target>
+
+    <Target Name="SyncLocalClassIslandDebugPlugin" AfterTargets="Build"
+            Condition="'$(Configuration)' == 'Debug' and Exists('..\ClassIsland\ClassIsland.Desktop\bin\Debug\net8.0-windows10.0.19041.0')">
+        <PropertyGroup>
+            <LocalClassIslandPluginDir>..\ClassIsland\ClassIsland.Desktop\bin\Debug\net8.0-windows10.0.19041.0\Plugins\QQListener\</LocalClassIslandPluginDir>
+        </PropertyGroup>
+        <ItemGroup>
+            <LocalPluginFiles Include="$(TargetDir)*.*" />
+        </ItemGroup>
+        <MakeDir Directories="$(LocalClassIslandPluginDir)" />
+        <Copy SourceFiles="@(LocalPluginFiles)"
+              DestinationFolder="$(LocalClassIslandPluginDir)"
+              SkipUnchangedFiles="true"
+              Retries="0"
+              ContinueOnError="WarnAndContinue" />
+        <Message Importance="high"
+                 Text="Synced QQListener debug build to $(LocalClassIslandPluginDir)" />
+    </Target>
+
+</Project>

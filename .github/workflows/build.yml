@@ -1,164 +1,89 @@
-name: Build packages
+name: Build ClassIsland plugin
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - master
     tags:
-      - "v*"
+      - '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
   pull_request:
     branches:
       - main
-      - master
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build ${{ matrix.name }}
+    name: Plugin checks (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: windows-x64-pyside2
-            os: windows-latest
-            qt_api: pyside2
-            package_name: QQListener-windows-x64-pyside2.exe
-          - name: macos-intel-pyside2
-            os: macos-15-intel
-            qt_api: pyside2
-            package_name: QQListener-macos-intel-pyside2.app.zip
-          - name: windows-x64-pyside6
-            os: windows-latest
-            qt_api: pyside6
-            package_name: QQListener-windows-x64-pyside6.exe
-          - name: macos-arm64-pyside6
-            os: macos-26
-            qt_api: pyside6
-            package_name: QQListener-macos-arm64-pyside6.app.zip
-
+        os: [windows-latest, macos-14]
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
         with:
-          python-version: "3.10"
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.*.lock.json'
 
-      - name: Install PySide6 dependencies
-        if: matrix.qt_api == 'pyside6'
-        run: |
-          python -m pip install --upgrade pip uv
-          uv sync --frozen
-          uv pip install "pyinstaller>=6.10,<7"
+      - name: Restore locked dependencies
+        run: dotnet restore QQListener.sln --locked-mode
 
-      - name: Install PySide2 dependencies
-        if: matrix.qt_api == 'pyside2'
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip uv
-          uv venv --python 3.10
-          uv pip install \
-            "aiohttp>=3.13.3" \
-            "edge-tts>=7.2.7" \
-            "loguru>=0.7.2" \
-            "pefile>=2024.8.26; sys_platform == 'win32'" \
-            "psutil>=7.2.2" \
-            "pygame>=2.6.1" \
-            "truststore>=0.10.4; sys_platform == 'win32'" \
-            "PySide2>=5.15.2.1,<5.16" \
-            "PySide2-Fluent-Widgets>=1.8.7" \
-            "pycaw>=20240210; sys_platform == 'win32'" \
-            "pywin32>=311; sys_platform == 'win32'" \
-            "pyinstaller>=6.10,<7"
-          uv pip uninstall -y \
-            PySide6 \
-            PySide6-Addons \
-            PySide6-Essentials \
-            PySide6-Fluent-Widgets \
-            shiboken6 \
-            PySideSix-Frameless-Window || true
-          uv pip list | grep -Ei "pyside|fluent|frameless" || true
+      - name: Build release
+        run: dotnet build QQListener.sln --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
 
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: uv pip install "pyobjc-framework-Cocoa>=10"
+      - name: Run tests
+        run: dotnet test QQListener.sln --configuration Release --no-build --no-restore --results-directory artifacts/test-results --logger trx
 
-      - name: Clean PySide2 Qt environment
-        if: matrix.qt_api == 'pyside2'
-        shell: bash
-        run: |
-          uv pip uninstall -y \
-            PySide6 \
-            PySide6-Addons \
-            PySide6-Essentials \
-            PySide6-Fluent-Widgets \
-            shiboken6 \
-            PySideSix-Frameless-Window || true
-          uv pip install --reinstall --no-deps "PySide2-Fluent-Widgets>=1.8.7"
-          uv pip list | grep -Ei "pyside|fluent|frameless" || true
+      - name: Verify toast samples
+        run: dotnet run --project Samples/QQListener.SampleVerifier/QQListener.SampleVerifier.csproj --configuration Release --no-build --no-restore
 
-      - name: Compile check
-        run: uv run --no-sync python -m compileall -q src main.py scripts
+      - name: Verify message UI
+        run: dotnet run --project Samples/QQListener.UiPreview/QQListener.UiPreview.csproj --configuration Release --no-build --no-restore -- --render artifacts/ui-previews
 
-      - name: Run native tests
-        if: runner.os == 'Windows' && matrix.qt_api == 'pyside6'
-        run: uv run --no-sync pytest tests/native -q
+      - name: Verify branch metadata
+        if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type != 'tag'
+        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only
 
-      - name: Qt import check
-        shell: bash
-        env:
-          QQLISTENER_QT_API: ${{ matrix.qt_api }}
-        run: |
-          uv run --no-sync python - <<'PY'
-          import importlib.util
-          import os
+      - name: Verify tagged metadata
+        if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type == 'tag'
+        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only --tag "${{ github.ref_name }}"
 
-          expected = os.environ["QQLISTENER_QT_API"]
-          forbidden = "PySide6" if expected == "pyside2" else "PySide2"
-          if importlib.util.find_spec(forbidden):
-              raise SystemExit(f"{forbidden} must not be installed in {expected} job")
+      - name: Build CIPX
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
+        run: dotnet build QQListener.csproj --configuration Release --no-restore -p:CreateCipx=true -p:ContinuousIntegrationBuild=true
 
-          from src.ui.qt_compat import QT_API
-          import src.ui.fluent_compat
+      - name: Verify clean install package
+        if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type != 'tag'
+        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release
 
-          assert QT_API == expected, (QT_API, expected)
-          print(QT_API)
-          PY
+      - name: Verify tagged clean install package
+        if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type == 'tag'
+        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --tag "${{ github.ref_name }}"
 
-      - name: Build app
-        env:
-          QQLISTENER_QT_API: ${{ matrix.qt_api }}
-        run: uv run --no-sync python scripts/build_app.py --qt-api ${{ matrix.qt_api }}
-
-      - name: Package Windows artifact
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          Copy-Item "dist/QQListener.exe" "${{ matrix.package_name }}" -Force
-
-      - name: Package macOS artifact
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -d "dist/QQListener.app" ]; then
-            ditto -c -k --sequesterRsrc --keepParent "dist/QQListener.app" "${{ matrix.package_name }}"
-          else
-            cp "dist/QQListener" "QQListener-macos"
-            chmod +x "QQListener-macos"
-            ditto -c -k --sequesterRsrc "QQListener-macos" "${{ matrix.package_name }}"
-          fi
-
-      - name: Upload artifact
+      - name: Upload plugin package
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: ${{ matrix.package_name }}
+          name: QQListener-${{ github.sha }}
           if-no-files-found: error
+          path: |
+            cipx/QQListener.cipx
+            cipx/checksums.md
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-checks-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            artifacts/test-results/*.trx
+            artifacts/ui-previews/*.png

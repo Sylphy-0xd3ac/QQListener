@@ -1,0 +1,186 @@
+{
+  "upstream": "SnowLuma/SnowLuma",
+  "commit": "f8cb15c27bca3d2d1bd044a921e55bfc44bb5e60",
+  "fixtures": [
+    {
+      "name": "group-nt-no-uuid",
+      "isGroup": true,
+      "bodyBase64": "CtoBEtcBqgPTAQgwEswBCskBCmcKZQjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiCWltYWdlLnBuZyoDEOkHMLgIOLgIEl4KKi9kb3dubG9hZD9hcHBpZD0xNDA3JmZpbGVpZD1PUkFDTEUtRklMRS1JRBIXChUmcmtleT1PUkFDTEUtRkFLRS1LRVkaF211bHRpbWVkaWEubnQucXEuY29tLmNuGBQ=",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "private-nt-no-uuid",
+      "isGroup": false,
+      "bodyBase64": "CtwBEtkBqgPVAQgwEs4BCssBCmkKZwjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiC3ByaXZhdGUucG5nKgMQ6QcwuAg4uAgSXgoqL2Rvd25sb2FkP2FwcGlkPTE0MDYmZmlsZWlkPU9SQUNMRS1GSUxFLUlEEhcKFSZya2V5PU9SQUNMRS1GQUtFLUtFWRoXbXVsdGltZWRpYS5udC5xcS5jb20uY24YCg==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1406&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "group-file-uuid-fallback",
+      "isGroup": true,
+      "bodyBase64": "CogBEoUBqgOBAQgwEnsKeQp3CmUI11MSIGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhGihiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiIglpbWFnZS5wbmcqAxDpBzC4CDi4CBIOT1JBQ0xFLUZJTEUtSUQYFA==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "group-md5-fallback",
+      "isGroup": true,
+      "bodyBase64": "CnYSdKoDcQgwEmsKaQpnCmUI11MSIGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhGihiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiIglpbWFnZS5wbmcqAxDpBzC4CDi4CBgU",
+      "images": [
+        {
+          "url": "http://gchat.qpic.cn/gchatpic_new/0/0-0-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/0",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "legacy-group-image",
+      "isGroup": true,
+      "bodyBase64": "CkASPkI8EglpbWFnZS5wbmdqEAECAwQFBgcICQoLDA0ODxCCARgvZ2NoYXRwaWNfbmV3LzAvbGVnYWN5LzDIAddT",
+      "images": [
+        {
+          "url": "http://gchat.qpic.cn/gchatpic_new/0/legacy/0",
+          "md5": "0102030405060708090a0b0c0d0e0f10"
+        }
+      ]
+    },
+    {
+      "name": "separate-compatibility-sibling",
+      "isGroup": true,
+      "bodyBase64": "CpoCEtcBqgPTAQgwEswBCskBCmcKZQjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiCWltYWdlLnBuZyoDEOkHMLgIOLgIEl4KKi9kb3dubG9hZD9hcHBpZD0xNDA3JmZpbGVpZD1PUkFDTEUtRklMRS1JRBIXChUmcmtleT1PUkFDTEUtRkFLRS1LRVkaF211bHRpbWVkaWEubnQucXEuY29tLmNuGBQSPkI8EglpbWFnZS5wbmdqEAECAwQFBgcICQoLDA0ODxCCARgvZ2NoYXRwaWNfbmV3LzAvbGVnYWN5LzDIAddT",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "same-elem-legacy-and-nt",
+      "isGroup": true,
+      "bodyBase64": "CpgCEpUCQjwSCWltYWdlLnBuZ2oQAQIDBAUGBwgJCgsMDQ4PEIIBGC9nY2hhdHBpY19uZXcvMC9sZWdhY3kvMMgB11OqA9MBCDASzAEKyQEKZwplCNdTEiBhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRooYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiIJaW1hZ2UucG5nKgMQ6QcwuAg4uAgSXgoqL2Rvd25sb2FkP2FwcGlkPTE0MDcmZmlsZWlkPU9SQUNMRS1GSUxFLUlEEhcKFSZya2V5PU9SQUNMRS1GQUtFLUtFWRoXbXVsdGltZWRpYS5udC5xcS5jb20uY24YFA==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "same-elem-text-and-nt",
+      "isGroup": true,
+      "bodyBase64": "CuUBEuIBCgkKB2NhcHRpb26qA9MBCDASzAEKyQEKZwplCNdTEiBhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRooYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiIJaW1hZ2UucG5nKgMQ6QcwuAg4uAgSXgoqL2Rvd25sb2FkP2FwcGlkPTE0MDcmZmlsZWlkPU9SQUNMRS1GSUxFLUlEEhcKFSZya2V5PU9SQUNMRS1GQUtFLUtFWRoXbXVsdGltZWRpYS5udC5xcS5jb20uY24YFA==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "same-elem-reply-and-nt",
+      "isGroup": true,
+      "bodyBase64": "Ct8BEtwB6gICCCqqA9MBCDASzAEKyQEKZwplCNdTEiBhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRooYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiIJaW1hZ2UucG5nKgMQ6QcwuAg4uAgSXgoqL2Rvd25sb2FkP2FwcGlkPTE0MDcmZmlsZWlkPU9SQUNMRS1GSUxFLUlEEhcKFSZya2V5PU9SQUNMRS1GQUtFLUtFWRoXbXVsdGltZWRpYS5udC5xcS5jb20uY24YFA==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "same-elem-empty-legacy-and-nt",
+      "isGroup": true,
+      "bodyBase64": "CtwBEtkBQgCqA9MBCDASzAEKyQEKZwplCNdTEiBhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYRooYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiIJaW1hZ2UucG5nKgMQ6QcwuAg4uAgSXgoqL2Rvd25sb2FkP2FwcGlkPTE0MDcmZmlsZWlkPU9SQUNMRS1GSUxFLUlEEhcKFSZya2V5PU9SQUNMRS1GQUtFLUtFWRoXbXVsdGltZWRpYS5udC5xcS5jb20uY24YFA==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "query-only-unrelated-legacy",
+      "isGroup": true,
+      "bodyBase64": "CpcCEtcBqgPTAQgwEswBCskBCmcKZQjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiCWltYWdlLnBuZyoDEOkHMLgIOLgIEl4KKi9kb3dubG9hZD9hcHBpZD0xNDA3JmZpbGVpZD1PUkFDTEUtRklMRS1JRBIXChUmcmtleT1PUkFDTEUtRkFLRS1LRVkaF211bHRpbWVkaWEubnQucXEuY29tLmNuGBQSO0I5EglvdGhlci5wbmdqEAECAwQFBgcICQoLDA0ODxCCARUmcmtleT1PUkFDTEUtRkFLRS1LRVnIAddT",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "case-distinct-filenames",
+      "isGroup": true,
+      "bodyBase64": "CpoCEtcBqgPTAQgwEswBCskBCmcKZQjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiCUlNQUdFLnBuZyoDEOkHMLgIOLgIEl4KKi9kb3dubG9hZD9hcHBpZD0xNDA3JmZpbGVpZD1PUkFDTEUtRklMRS1JRBIXChUmcmtleT1PUkFDTEUtRkFLRS1LRVkaF211bHRpbWVkaWEubnQucXEuY29tLmNuGBQSPkI8EglpbWFnZS5wbmdqEAECAwQFBgcICQoLDA0ODxCCARgvZ2NoYXRwaWNfbmV3LzAvbGVnYWN5LzDIAddT",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "url": "http://gchat.qpic.cn/gchatpic_new/0/legacy/0",
+          "md5": "0102030405060708090a0b0c0d0e0f10"
+        }
+      ]
+    },
+    {
+      "name": "md5-derived-filename-sibling",
+      "isGroup": true,
+      "bodyBase64": "CqoCEswBqgPIAQgwEsEBCr4BClwKWgjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIqAxDpBzC4CDi4CBJeCiovZG93bmxvYWQ/YXBwaWQ9MTQwNyZmaWxlaWQ9T1JBQ0xFLUZJTEUtSUQSFwoVJnJrZXk9T1JBQ0xFLUZBS0UtS0VZGhdtdWx0aW1lZGlhLm50LnFxLmNvbS5jbhgUEllCVxIkYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEucG5nahABAgMEBQYHCAkKCwwNDg8QggEYL2djaGF0cGljX25ldy8wL2xlZ2FjeS8wyAHXUw==",
+      "images": [
+        {
+          "url": "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "group-nt-server-domain-gchat",
+      "isGroup": true,
+      "bodyBase64": "CtABEs0BqgPJAQgwEsIBCr8BCmcKZQjXUxIgYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEaKGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiCWltYWdlLnBuZyoDEOkHMLgIOLgIElQKKi9kb3dubG9hZD9hcHBpZD0xNDA3JmZpbGVpZD1PUkFDTEUtRklMRS1JRBIXChUmcmtleT1PUkFDTEUtRkFLRS1LRVkaDWdjaGF0LnFwaWMuY24YFA==",
+      "images": [
+        {
+          "url": "https://gchat.qpic.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "legacy-absolute-gchat-https",
+      "isGroup": true,
+      "bodyBase64": "CnwSekJ4EglpbWFnZS5wbmdqEAECAwQFBgcICQoLDA0ODxCCAVRodHRwczovL2djaGF0LnFwaWMuY24vZG93bmxvYWQ/YXBwaWQ9MTQwNyZmaWxlaWQ9T1JBQ0xFLUZJTEUtSUQmcmtleT1PUkFDTEUtRkFLRS1LRVnIAddT",
+      "images": [
+        {
+          "url": "https://gchat.qpic.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "0102030405060708090a0b0c0d0e0f10"
+        }
+      ]
+    },
+    {
+      "name": "legacy-absolute-gchat-http",
+      "isGroup": true,
+      "bodyBase64": "CnsSeUJ3EglpbWFnZS5wbmdqEAECAwQFBgcICQoLDA0ODxCCAVNodHRwOi8vZ2NoYXQucXBpYy5jbi9kb3dubG9hZD9hcHBpZD0xNDA3JmZpbGVpZD1PUkFDTEUtRklMRS1JRCZya2V5PU9SQUNMRS1GQUtFLUtFWcgB11M=",
+      "images": [
+        {
+          "url": "http://gchat.qpic.cn/download?appid=1407&fileid=ORACLE-FILE-ID&rkey=ORACLE-FAKE-KEY",
+          "md5": "0102030405060708090a0b0c0d0e0f10"
+        }
+      ]
+    }
+  ]
+}

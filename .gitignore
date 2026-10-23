@@ -1,62 +1,30 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+bin/
+obj/
+/packages/
+/artifacts/
+/cipx/
+TestResults/
+.avalonia-build-tasks/
+*.md5sum
+generate-md5.ps1
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv/
-
-# IDE
+.vs/
 .vscode/
 .idea/
+*.user
+*.suo
+*.DotSettings.user
 *.swp
 *.swo
 *~
 
-# Project specific
-*.json
-!setting.json
-!notify.json
-*.mp3
-*.wav
-*.ogg
-tts_temp.mp3
-tts_output.mp3
+/.claude/
+/.codex/
+/.worktrees/
+/.stakpak/
 
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Logs
 *.log
 logs/
-
-# PyInstaller
-*.spec
-*.exe
-*.manifest
-
-# Misc
 .DS_Store
+Thumbs.db
+Desktop.ini

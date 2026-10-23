@@ -1,152 +1,57 @@
 # QQListener
 
-> Ciallo～(∠・ω< )⌒★
+[![ClassIsland](https://img.shields.io/badge/ClassIsland-plugin-512BD4?style=flat-square)](https://github.com/ClassIsland/ClassIsland)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square)](#安装)
+[![MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
-[![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://python.org)
-[![PySide6](https://img.shields.io/badge/PySide6-6.7+-green.svg)](https://doc.qt.io/qtforpython/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+将 NT QQ 的消息转发为 ClassIsland 提醒，支持群聊筛选、重要消息分级和课后集中提醒。
 
-QQListener 是面向 NT QQ 的本地消息提醒工具。程序通过用户单独安装并接受许可的
-SnowLuma 官方核心接收原生消息帧，不依赖 Windows Toast、WinSDK 或 UI 自动化。
+[下载插件](https://github.com/Sylphy-0xd3ac/QQListener/releases) · [使用说明](docs/usage.md) · [更新日志](CHANGELOG.md) · [反馈问题](https://github.com/Sylphy-0xd3ac/QQListener/issues)
 
 ## 功能
 
-- 原生解析私聊与群聊中的文本、@、图片、文件、视频与引用消息
-- 通知里直接渲染图片，文件/视频卡片「下载 → 进度环 → 打开」，一律交给系统默认程序
-- 文件图标取自系统（装了 Office 就是 Office 那张），HiDPI 屏上不发虚
-- 附件保存到可配置的下载目录（默认系统 Downloads）
-- 引用消息与本条消息用一条写着「引用消息」的分割线分开显示，两条都做完整解析
-- 点「确认」把按钮区换成输入框，直接回话；群聊以引用回复形式发送
-- 默认只显示名字与群名，点发送者一行才展开群号与 QQ 号
-- 私聊按“备注 > 昵称”、群聊按“备注 > 群昵称 > 昵称”显示发送者
-- 按精确 QQ 号设置重要人物、人物白名单和人物黑名单
-- 按精确群号设置群白名单和群黑名单，黑名单优先
-- 重要关键词、@我、呼叫提醒和 Edge TTS / 系统 TTS 播报，播报音量可调（默认 50）
-- 暂停期间消息不丢：先积压，恢复监听时合成一个窗口一次性弹出，每条都完整渲染
-- 默认以后台守护进程运行，命令行可远程控制（见下）
-- 性能模式：关掉遮罩/阴影/动画，低配电脑也不卡
-- 所有消息与设置均在本地处理，不提供遥测上传
+- 按群聊、联系人、关键词和时间段筛选消息，支持黑白名单、重要人物、@ 与呼叫提醒。
+- 在提醒中显示文字、图片、文件和引用内容，正文窗口跟随 ClassIsland 的提醒状态与主题。
+- 暂停期间暂存消息，恢复后合并展示；支持上课暂停和课后延迟。
+- 按优先级依次提醒，同一会话的短时连续消息可合并显示。
+- 可选引用群消息回复预设文本，或为群消息添加 QQ 的 OK 表情回应。
+- 提供语音、提示音、工作流触发器与动作，以及“最后 QQ 消息”组件。
 
-## 系统要求
+## 安装
 
-- Windows 10 1903 或更高版本，64 位
-- NT QQ（新版 QQ）
-- Python 3.10（从源码运行时）
+需要 Windows x64、ClassIsland 和已登录的 NT QQ。不支持 TIM；macOS、Linux 不支持原生消息捕获。
 
-SnowLuma 是专有组件，不随 QQListener 分发。首次启用核心时，安装向导会展示其
-EULA、LICENSE 与隐私说明，并从官方 release 下载；网络受限时默认推荐
-`https://ghfast.top`，也可清空代理后直连 GitHub。
+1. 从 [Releases](https://github.com/Sylphy-0xd3ac/QQListener/releases) 下载 `.cipx` 文件，在 ClassIsland 的插件管理中从本地安装，随后重启 ClassIsland。
+2. 打开 QQListener 设置，在「高级设置 → 重新触发安装向导」中阅读许可说明并安装 SnowLuma 内核。
+3. 开启监听，配置需要提醒的群聊、联系人与关键词。确认接收管道已连接后，发送一条测试消息。
 
-## 快速开始
+SnowLuma 内核不随插件分发，首次使用需单独下载并接受其许可。插件设置、回复方式及常见问题见[使用说明](docs/usage.md)。
 
-从 [GitHub Releases](https://github.com/BSOD-MEMZ/QQListener/releases) 下载并运行安装包。
-首次运行后：
+## 开发
 
-1. 启动并登录 NT QQ。
-2. 在核心向导中阅读条款、选择下载源并安装核心。
-3. 打开“设置 → 规则”，按需填写重要人物 QQ 号及白/黑名单。
-4. 回到首页，确认状态显示“接收管道已连接”。只有这个状态代表监听链路真正可用。
+项目使用 .NET 8 和 ClassIsland.PluginSdk，以下命令在仓库根目录执行。
 
-白名单启用但内容为空时会拒绝所有消息；黑名单与白名单冲突时，以黑名单为准。
-
-## 从源码运行
-
-```bash
-uv sync
-uv run main.py
+```sh
+dotnet restore QQListener.sln --locked-mode
+dotnet build QQListener.sln -c Release --no-restore
+dotnet test QQListener.sln -c Release --no-build --no-restore
 ```
 
-## 命令行
+构建 Windows 安装包、运行界面预览和发布校验的方法见[开发指南](DEVELOPMENT.md)。
 
-不带参数就是守护模式：后台常驻（托盘 + 悬浮球），不弹窗。再启动一次不会开第二份，
-只会把已在运行的那个叫出来。
+## 反馈
 
-```bash
-qqlistener              # 后台启动（默认）
-qqlistener --window     # 启动并直接打开设置窗口
-qqlistener status       # 查看守护进程与核心状态
-qqlistener start        # 开始监听
-qqlistener pause        # 暂停监听（核心留在 QQ 里）
-qqlistener toggle       # 监听 ⇄ 暂停
-qqlistener unload       # 从 QQ 卸载核心
-qqlistener show         # 打开设置窗口
-qqlistener reload       # 重新加载 setting.json
-qqlistener quit         # 退出守护进程
-```
+请通过 [Issues](https://github.com/Sylphy-0xd3ac/QQListener/issues) 报告问题，并提供 Windows、ClassIsland、QQ 与插件版本、复现步骤及错误信息。
 
-指令走本机命名管道 / Unix socket（同用户可达），不监听任何 TCP 端口。
+提交截图或日志前，请移除聊天内容、QQ 号和下载凭证。图片问题可提供占位区域的错误码，不要公开完整下载链接、`rkey` 或原始消息帧。
 
-可选依赖：
+## 致谢与许可
 
-```bash
-uv sync --extra system-tts
-```
+本项目基于以下项目的工作：
 
-开发检查：
+- [BSOD-MEMZ/QQListener](https://github.com/BSOD-MEMZ/QQListener)：原生捕获实现与项目起源。
+- [alright-qwq/QQListener](https://github.com/alright-qwq/QQListener)：ClassIsland 插件形态与规则模型。
+- [SnowLuma](https://github.com/SnowLuma/SnowLuma)：QQ 原生捕获内核及协议参考。
+- [ClassIsland](https://github.com/ClassIsland/ClassIsland)：提醒、组件和自动化支持。
 
-```bash
-uv run ruff check src tests scripts
-uv run pytest -q
-```
-
-更多架构与扩展说明见 [DEVELOPMENT.md](DEVELOPMENT.md)。
-
-## 常见问题
-
-### 显示核心映射完成，但收不到消息
-
-“核心映像已映射”只是注入阶段成功。请以首页或核心页的实时状态为准；若仍显示
-“等待接收管道”，监听链路尚未连通。先确认 QQ 主进程正在运行，再尝试暂停/恢复核心。
-
-### 下载核心时证书校验失败
-
-Windows 版本使用系统证书存储。请先校准系统时间并检查代理/杀毒软件的 HTTPS
-证书拦截；也可在核心页使用推荐代理 `https://ghfast.top` 后重试。
-
-### 文件消息为什么没有自动下载
-
-通知只解析并展示文件名、大小和类型，避免后台下载大文件。点一下文件卡片才开始下载，
-进度以圆环显示，下完变成「打开」并交给系统默认程序。图片会自动预取以便内联渲染，
-可在「设置 → 通知」里关掉。
-
-### 图片显示不出来 / 只剩占位符
-
-QQ-NT 的图片地址必须带一枚短效 `rkey`，缺了 CDN 会直接返回
-`{"retcode":-5503010,"retmsg":"invalid rkey"}`。程序会先用推送里自带的 rkey，
-拿不到再走 OIDB `0x9067_202` 取一批并按类型缓存。若长期显示不出来，多半是
-control 管道没连上——先看首页是否为「接收管道已连接」。
-
-### 暂停之后那些消息去哪了
-
-暂停只是不弹窗，钩子和管道都还在，消息照常收下来并完整解析（图片也照样预取），
-攒在内存队列里。点悬浮球恢复监听时，它们会合成一个窗口一次性弹出：
-每条消息之间是一条素分割线，带引用的那条仍然显示自己的引用块。
-上限默认 50 条，超了丢最旧的并在标题里注明。可在「设置 → 通知」关掉或改上限。
-
-### 语音播报很慢 / 半天不出来
-
-EdgeTTS 要连微软的服务器，校园网慢或被拦截时会等很久。现在有 8 秒超时，超了就跳过这条
-播报（日志里有 `Edge TTS 8.0秒未返回`），不再拖住通知窗口。如果学校网络长期不通，
-到「设置 → 通知」取消勾选 **使用新版 EdgeTTS** 改用系统 TTS——但要注意系统 TTS 依赖
-可选包 `pyttsx3`（`uv sync --extra system-tts`），没装的话取消勾选就等于没有语音。
-
-### 播报声音太大 / 调音量没反应
-
-播报和提示音的音量在「设置 → 通知 → 播报/提示音音量」，**默认 50**，不再一上来就顶格。
-这是本程序自己这一路音频的音量，不动系统音量。
-
-另有一个「播报时把系统主音量拉满」开关，**默认关**——它会盖掉你自己调好的音量，
-只在"教室里必须听见"时才开。开了之后如果仍然没反应，看日志里的
-`设置系统音量失败` / `设置本进程音量失败`（以前这些失败只打在 debug 级别，
-根本看不见）。Windows 上常见原因是实际输出设备不是系统默认设备。
-
-### 通知窗口很卡
-
-在「设置 → 通知」勾选**性能模式**：关闭全屏遮罩、阴影和动画，通知窗口本身不使用
-Fluent 控件，悬浮球也只在状态真正变化时才重绘。
-
-## 许可证
-
-QQListener 源代码采用 [MIT License](LICENSE)。SnowLuma 核心使用其自身许可，二者相互独立。
-
-> 本程序仅供合法的学习与日常提醒场景使用，请遵守 QQ、SnowLuma 及所在地法律法规。
+QQListener 源代码采用 MIT 许可证，见 [LICENSE](LICENSE)。SnowLuma 采用其自身许可，不属于本项目 MIT 许可的授权范围。
