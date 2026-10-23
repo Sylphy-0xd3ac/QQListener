@@ -57,6 +57,25 @@ dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier
 
 验证标签时追加 `--tag <四段式版本号>`。校验包括版本一致性、包结构、内嵌程序集及校验和。历史标签保留，不通过重写标签修正旧版本清单。
 
+## 自动发布
+
+向远端推送与清单一致的四段式版本标签即可发布，例如：
+
+```sh
+git tag 2.2.0.0
+git push origin 2.2.0.0
+```
+
+Windows 和 macOS 的构建、测试及界面验证全部通过后，发布任务下载同一次运行中已校验的 Windows 安装包，上传 `QQListener.cipx` 和 `checksums.md`。发布说明取自 `CHANGELOG.md` 中对应版本的条目，并附加 ClassIsland 识别所需的 `CLASSISLAND_PKG_MD5` 校验标记。
+
+附件上传完成前 Release 保持草稿；失败后可重跑工作流继续发布。已经公开的 Release 不会被重跑覆盖。普通分支推送、Pull Request 和手动触发只执行检查，不公开 Release。
+
+发布脚本的离线验证使用模拟 GitHub CLI，不访问真实 Release：
+
+```sh
+bash Tests/Release/run.sh
+```
+
 ## 代码位置
 
 - `Protocol/`：消息帧和富消息元素解析。

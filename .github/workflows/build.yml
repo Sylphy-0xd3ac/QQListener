@@ -22,6 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-14]
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -48,13 +50,17 @@ jobs:
       - name: Verify message UI
         run: dotnet run --project Samples/QQListener.UiPreview/QQListener.UiPreview.csproj --configuration Release --no-build --no-restore -- --render artifacts/ui-previews
 
+      - name: Verify release automation
+        shell: bash
+        run: bash Tests/Release/run.sh
+
       - name: Verify branch metadata
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type != 'tag'
         run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only
 
       - name: Verify tagged metadata
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type == 'tag'
-        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only --tag "${{ github.ref_name }}"
+        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only --tag "$env:RELEASE_TAG"
 
       - name: Build CIPX
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
@@ -66,7 +72,7 @@ jobs:
 
       - name: Verify tagged clean install package
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type == 'tag'
-        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --tag "${{ github.ref_name }}"
+        run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --tag "$env:RELEASE_TAG"
 
       - name: Upload plugin package
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
@@ -87,3 +93,32 @@ jobs:
           path: |
             artifacts/test-results/*.trx
             artifacts/ui-previews/*.png
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download verified plugin package
+        uses: actions/download-artifact@v4
+        with:
+          name: QQListener-${{ github.sha }}
+          path: release
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash Tools/PublishRelease.sh release

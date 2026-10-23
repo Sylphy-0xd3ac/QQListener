@@ -19,13 +19,13 @@ public sealed class WorkflowTests
     private const string BranchMetadataRun =
         "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only";
     private const string TaggedMetadataRun =
-        "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only --tag \"${{ github.ref_name }}\"";
+        "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only --tag \"$env:RELEASE_TAG\"";
     private const string BuildCipxRun =
         "dotnet build QQListener.csproj --configuration Release --no-restore -p:CreateCipx=true -p:ContinuousIntegrationBuild=true";
     private const string BranchPackageRun =
         "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release";
     private const string TaggedPackageRun =
-        "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --tag \"${{ github.ref_name }}\"";
+        "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --tag \"$env:RELEASE_TAG\"";
 
     [Fact]
     public void BuildWorkflowIsValidAndPreservesReleaseGateOrder()
@@ -35,7 +35,7 @@ public sealed class WorkflowTests
         var stream = new YamlStream();
         stream.Load(new StringReader(yaml));
         var document = Assert.Single(stream.Documents);
-        var steps = ReadBuildSteps(document);
+        var steps = ReadJobSteps(document);
 
         AssertUsesStep(steps, "Check out repository", "actions/checkout@v4");
         AssertStep(steps, "Restore locked dependencies", null, RestoreRun);
@@ -80,7 +80,7 @@ public sealed class WorkflowTests
             platforms.Children.Select(n => Assert.IsType<YamlScalarNode>(n).Value));
         Assert.False(build.Children.ContainsKey(new YamlScalarNode("defaults")));
 
-        var steps = ReadBuildSteps(document);
+        var steps = ReadJobSteps(document);
         AssertStep(steps, "Restore locked dependencies", null, RestoreRun);
         AssertStep(steps, "Build release", null, BuildRun);
         AssertStep(steps, "Run tests", null,
@@ -127,6 +127,44 @@ public sealed class WorkflowTests
     }
 
     [Fact]
+    public void ReleasePublishingRequiresSuccessfulBuildsAndATagPush()
+    {
+        var root = FindProjectRoot();
+        var stream = new YamlStream();
+        stream.Load(new StringReader(File.ReadAllText(Path.Combine(root, ".github", "workflows", "build.yml"))));
+        var document = Assert.Single(stream.Documents);
+        var mapping = Assert.IsType<YamlMappingNode>(document.RootNode);
+        Assert.Equal("read", Scalar(Mapping(mapping, "permissions"), "contents"));
+        var jobs = Mapping(mapping, "jobs");
+        var build = Mapping(jobs, "build");
+        Assert.Equal("${{ github.ref_name }}", Scalar(Mapping(build, "env"), "RELEASE_TAG"));
+        var release = Mapping(jobs, "release");
+        Assert.Equal("build", Scalar(release, "needs"));
+        Assert.Equal("github.event_name == 'push' && github.ref_type == 'tag'", Scalar(release, "if"));
+        Assert.Equal("write", Scalar(Mapping(release, "permissions"), "contents"));
+        Assert.Equal("release-${{ github.ref }}", Scalar(Mapping(release, "concurrency"), "group"));
+        Assert.Equal("false", Scalar(Mapping(release, "concurrency"), "cancel-in-progress"));
+
+        var steps = ReadJobSteps(document, "release");
+        AssertUsesStep(steps, "Check out tagged source", "actions/checkout@v4");
+        AssertUsesStep(steps, "Download verified plugin package", "actions/download-artifact@v4");
+        AssertStep(steps, "Publish release assets", null, "bash Tools/PublishRelease.sh release");
+        AssertNamedStepsOrdered(steps, "Check out tagged source", "Download verified plugin package", "Publish release assets");
+        var stepNodes = Assert.IsType<YamlSequenceNode>(Value(release, "steps")).Children
+            .Select(node => Assert.IsType<YamlMappingNode>(node)).ToArray();
+        Assert.Equal("false", Scalar(Mapping(stepNodes[0], "with"), "persist-credentials"));
+        Assert.Equal("QQListener-${{ github.sha }}", Scalar(Mapping(stepNodes[1], "with"), "name"));
+        Assert.Equal("release", Scalar(Mapping(stepNodes[1], "with"), "path"));
+        Assert.Equal("${{ github.token }}", Scalar(Mapping(stepNodes[2], "env"), "GH_TOKEN"));
+        Assert.Equal("${{ github.ref_name }}", Scalar(Mapping(stepNodes[2], "env"), "RELEASE_TAG"));
+        Assert.Equal("bash", Scalar(stepNodes[2], "shell"));
+        AssertStep(ReadJobSteps(document), "Verify release automation", null, "bash Tests/Release/run.sh");
+        Assert.True(File.Exists(Path.Combine(root, "Tools", "PublishRelease.sh")));
+        Assert.True(File.Exists(Path.Combine(root, "Tests", "Release", "run.sh")));
+        Assert.Contains("*.sh text eol=lf", File.ReadAllText(Path.Combine(root, ".gitattributes")));
+    }
+
+    [Fact]
     public void CipxBuildSelectsWindowsTargetBeforePlatformDefaults()
     {
         var root = FindProjectRoot();
@@ -156,11 +194,11 @@ public sealed class WorkflowTests
         Assert.Equal("'$(TargetFramework)' != 'net8.0-windows10.0.19041.0'", (string?)error.Attribute("Condition"));
     }
 
-    private static IReadOnlyList<WorkflowStep> ReadBuildSteps(YamlDocument document)
+    private static IReadOnlyList<WorkflowStep> ReadJobSteps(YamlDocument document, string jobName = "build")
     {
         var root = Assert.IsType<YamlMappingNode>(document.RootNode);
         var jobs = Mapping(root, "jobs");
-        var build = Mapping(jobs, "build");
+        var build = Mapping(jobs, jobName);
         var sequence = Assert.IsType<YamlSequenceNode>(Value(build, "steps"));
         return sequence.Children
             .Select(node => Assert.IsType<YamlMappingNode>(node))
