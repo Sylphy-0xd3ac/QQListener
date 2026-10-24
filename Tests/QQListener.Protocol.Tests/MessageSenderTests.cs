@@ -127,6 +127,43 @@ public class SendOverControlPipeTests
     }
 
     [Fact]
+    public void EmptySendResponseCannotBecomeASuccessfulReply()
+    {
+        var (api, _) = Api(AckAndReply([]));
+        Assert.Throws<IOException>(() => api.SendTextReply(new ReplyRoute(7, "c2c", "10001"), "收到"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GroupSendRequiresAGroupReceiptRatherThanOnlyTransportSuccess(bool privateReceipt)
+    {
+        var body = privateReceipt ? Pb.Cat(Pb.VarintField(1, 0), Pb.VarintField(14, 88)) : Pb.VarintField(1, 0);
+        var (api, _) = Api(AckAndReply(body));
+        Assert.Throws<IOException>(() => api.SendTextReply(new ReplyRoute(7, "group", "123456"), "收到"));
+    }
+
+    [Fact]
+    public void PrivateAcknowledgementWithoutASequenceKeepsTheUpstreamSemantics()
+    {
+        var (api, _) = Api(AckAndReply(Pb.VarintField(1, 0)));
+        var result = api.SendTextReply(new ReplyRoute(7, "c2c", "10001"), "收到");
+        Assert.Equal(0, result.Result);
+        Assert.Equal(0, result.Sequence);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(11)]
+    [InlineData(14)]
+    [InlineData(2)]
+    public void SendResponseFieldsMustUseTheirDeclaredWireTypes(int number)
+    {
+        var body = number == 2 ? Pb.VarintField(2, 0) : Pb.LenField(number, new byte[] { 0 });
+        Assert.Throws<InvalidDataException>(() => MessageSender.ParseResponse(body));
+    }
+
+    [Fact]
     public void SendWithoutAQqProcessFailsFast()
     {
         var (api, _) = Api();
@@ -138,7 +175,7 @@ public class SendOverControlPipeTests
     [Fact]
     public void PrivateSceneNeverSendsAQuote()
     {
-        var (api, opened) = Api(AckAndReply(Pb.VarintField(1, 0)));
+        var (api, opened) = Api(AckAndReply(Pb.Cat(Pb.VarintField(1, 0), Pb.VarintField(14, 88))));
 
         api.SendTextReply(
             new ReplyRoute(7, "c2c", "10001", QuoteSeq: 42, QuoteSenderId: "1001"),
@@ -155,7 +192,7 @@ public class SendOverControlPipeTests
     [Fact]
     public void GroupSceneKeepsTheQuote()
     {
-        var (api, opened) = Api(AckAndReply(Pb.VarintField(1, 0)));
+        var (api, opened) = Api(AckAndReply(Pb.Cat(Pb.VarintField(1, 0), Pb.VarintField(11, 88))));
 
         api.SendTextReply(
             new ReplyRoute(7, "group", "123456", QuoteSeq: 42, QuoteSenderId: "1001"),

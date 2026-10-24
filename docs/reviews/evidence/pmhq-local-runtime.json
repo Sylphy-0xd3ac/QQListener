@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-24",
+  "version": "9.0.6-local-pipe.1",
+  "environment": "Wine 10.0",
+  "dll_sha256": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
+  "rust_launcher_executed": false,
+  "auth_token_required": false,
+  "local_initialization_anchor_checks": 4,
+  "local_runtime_status": 0,
+  "native_account_layout_check": true,
+  "native_rebuild_byte_identical": true,
+  "native_pipe_connection": true,
+  "native_fixture_response_kind": "resp",
+  "native_fixture_response_id": 1,
+  "native_fixture_response_code": -1,
+  "fixture_replaces_output_queue_callback": true,
+  "full_native_event_writer_tested": false,
+  "real_qq_injection_signing_or_delivery_tested": false
+}

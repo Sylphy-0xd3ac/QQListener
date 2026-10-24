@@ -27,6 +27,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <EmbeddedResource Include="Assets/PMHQ/win-x64/pmhq.dll" LogicalName="QQListener.PMHQ.pmhq.dll" />
         <Content Include="Assets/Sounds/notify_sound.mp3"
                  CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets/Sounds/important_sound.mp3"
@@ -42,6 +43,14 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
         <None Update="LICENSE;DEVELOPMENT.md;docs/usage.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </None>
+        <None Update="Assets/PMHQ/NOTICE.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </None>
+        <None Update="docs/reviews/**/*.md;docs/reviews/evidence/*.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         </None>

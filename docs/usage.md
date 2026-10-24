@@ -1,6 +1,6 @@
 # QQListener
 
-ClassIsland 的 QQ 消息提醒插件。通过 SnowLuma 内核接收 NT QQ 消息，按规则显示普通、重要或呼叫提醒。
+ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消息，也可在调试区选择内置的 PMHQ 实验引擎。
 
 [下载](https://github.com/Sylphy-0xd3ac/QQListener/releases) · [更新日志](https://github.com/Sylphy-0xd3ac/QQListener/blob/main/CHANGELOG.md) · [问题反馈](https://github.com/Sylphy-0xd3ac/QQListener/issues)
 
@@ -15,6 +15,18 @@ ClassIsland 的 QQ 消息提醒插件。通过 SnowLuma 内核接收 NT QQ 消�
 
 内核安装后会自动装载，无需每次手动操作。“核心映像已映射”只表示装载阶段完成，不代表消息接收已经连通。
 
+### PMHQ 实验引擎
+
+在设置底部「调试 → 消息引擎」选择 PMHQ。确认实验性提示后，退出并重启 QQ；旧 QQ 进程退出前，插件会等待，不会同时装载两套钩子。切回 SnowLuma 同样需要重启 QQ。
+
+PMHQ v9.0.6 本机内核已内置，无需填写 `auth_token`，也不需要 manager、独立启动器或本机 HTTP 服务。插件直接装载 DLL，通过当前用户的命名管道与所选 QQ 通信。初始化在本机完成，发包由 QQ 自身处理。
+
+选择 PMHQ 并重启 QQ 后会自动连接；可点击「重新检查」重试。「打开 PMHQ 内核目录」用于查看解压文件。旧版的 `pmhq_config.json` 不再读取；更新内核不删除用户原有配置文件。此功能尚未完成原生 Windows、真实 QQ 注入及发包验收。
+
+该模式只连接一个 QQ 主进程，不接管外部 PMHQ，也不与 LLBot 已启动的 PMHQ 共用实例。停止连接会关闭管道，原生钩子保留至 QQ 退出，不会结束 QQ。QQ 退出登录或切换账号后，需要重启 QQ 重新建立会话。
+
+状态显示“PMHQ 本机引擎已连接”表示内核初始化、本机管道以及已观察到的账号记录可用，不代表真实消息发送已经验收。账号记录是 DLL 最近捕获的 UIN，不能作为实时退出或换号查询，因此退出登录或切换账号后须重启 QQ。内核未初始化时不发送回复和图片凭证请求。调用链及限制见[发包与签名审查](reviews/pmhq-signing.md)，完整范围见[双引擎 review](reviews/dual-engine.md)。
+
 ## 配置
 
 规则支持群聊、联系人、关键词和提醒时间段。黑名单优先于白名单；会话白名单留空时不限制来源，填入内容后只提醒匹配的会话。
@@ -23,6 +35,7 @@ ClassIsland 的 QQ 消息提醒插件。通过 SnowLuma 内核接收 NT QQ 消�
 
 | 选项 | 默认值 |
 | --- | --- |
+| 消息引擎 | SnowLuma |
 | 排除自己发送的消息 | 开启 |
 | 上课时暂停提醒 | 开启 |
 | 确定时回复消息 | 关闭 |

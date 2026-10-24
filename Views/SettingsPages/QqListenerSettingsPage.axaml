@@ -20,7 +20,7 @@
     <ScrollViewer>
         <StackPanel Classes="settings-container animated-intro" Spacing="4">
 
-            <!-- 内核（SnowLuma 官方二进制，本插件不打包、不自建镜像） -->
+            <!-- 当前引擎运行状态；SnowLuma 独立安装，PMHQ 为内置实验选项。 -->
             <TextBlock FontSize="18"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
@@ -70,7 +70,7 @@
                                        Description="积压上限、重新触发安装向导与卸载内核。">
                 <controls:SettingsExpander.Items>
                     <controls:SettingsExpanderItem Content="重新触发安装向导"
-                        Description="重新打开内核安装、更新和许可说明。已安装的内核会在加载插件时自动装载。">
+                        Description="安装、更新 SnowLuma 并阅读其许可。PMHQ 已内置，请在底部调试区配置。">
                         <controls:SettingsExpanderItem.Footer>
                             <Button Content="重新触发安装向导" Click="OnOpenKernelWizardClick"
                                     IsEnabled="{Binding KernelSetup.IsSupported}" />
@@ -419,6 +419,27 @@
                         <Button Click="OnShowTestCallingNotificationClick" Content="引用回复" />
                     </StackPanel>
                 </controls:SettingsExpander.Footer>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander Header="消息引擎"
+                                       Description="{Binding EngineDescription}">
+                <controls:SettingsExpander.Footer>
+                    <ComboBox ItemsSource="{Binding EngineNames}"
+                              SelectedIndex="{Binding SelectedEngineIndex, Mode=TwoWay}"
+                              IsEnabled="{Binding KernelSetup.IsSupported}" MinWidth="200" />
+                </controls:SettingsExpander.Footer>
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsExpanderItem IsVisible="{Binding IsPmhqSelected}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="实验性功能：无需启动凭证，使用本机 QQ；真实 QQ 发包尚未验证。切换后请重启 QQ。"
+                                       TextWrapping="Wrap" Foreground="#D29922" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="打开 PMHQ 内核目录" Click="OnOpenPmhqConfigurationClick" />
+                                <Button Content="重新检查" Click="OnRecheckPmhqClick" />
+                            </StackPanel>
+                        </StackPanel>
+                    </controls:SettingsExpanderItem>
+                </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xE161;}"

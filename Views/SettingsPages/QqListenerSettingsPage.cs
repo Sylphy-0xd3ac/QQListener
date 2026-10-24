@@ -10,6 +10,9 @@ using Microsoft.Extensions.Hosting;
 using QQListener.Models;
 using QQListener.Services;
 using QQListener.Views.Windows;
+using QQListener.Core;
+using FluentAvalonia.UI.Controls;
+using System.Diagnostics;
 
 namespace QQListener.Views.SettingsPages;
 
@@ -24,6 +27,25 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
     private DispatcherTimer? _saveTimer;
     private bool _providerAvailableCache;
     private bool _providerProbed;
+    private int _selectedEngineIndex;
+    private bool _changingEngine;
+    public IReadOnlyList<string> EngineNames { get; } = ["SnowLuma", "PMHQ（实验性）"];
+    public bool IsPmhqSelected => _settings.Engine == ListenerEngine.PMHQ;
+    public string EngineDescription => IsPmhqSelected
+        ? "PMHQ 为内置本机引擎，无需启动凭证；尚未验证真实 QQ 发包。切换引擎后需要重启 QQ。"
+        : "SnowLuma 为默认引擎。切换引擎后需要重启 QQ，避免同时装载不同钩子。";
+
+    public int SelectedEngineIndex
+    {
+        get => _selectedEngineIndex;
+        set
+        {
+            if (value is < 0 or > 1 || _selectedEngineIndex == value || _changingEngine) return;
+            _selectedEngineIndex = value;
+            PropertyChanged?.Invoke(this, new(nameof(SelectedEngineIndex)));
+            _ = ChangeEngineAsync((ListenerEngine)value);
+        }
+    }
     private string _previewResultText = "走一遍完整的提醒链路，看看提醒实际长什么样，不需要真的收到 QQ 消息。";
 
     public QqListenerSettings Settings => _settings;
@@ -77,6 +99,7 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
         bool autoSaveEnabled)
     {
         _settings = settings;
+        _selectedEngineIndex = (int)settings.Engine;
         _diagnostics = diagnostics;
         _pluginInfo = pluginInfo;
         _autoSaveEnabled = autoSaveEnabled;
@@ -99,6 +122,7 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
 
     private void OnSettingsPropertyChanged(PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(QqListenerSettings.Engine)) RefreshEngineSelection();
         if (e.PropertyName == nameof(QqListenerSettings.IsEnabled))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanPoll)));
@@ -110,6 +134,49 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
             DebounceSave();
         }
     }
+
+    private void RefreshEngineSelection()
+    {
+        _selectedEngineIndex = (int)_settings.Engine;
+        foreach (var name in new[] { nameof(SelectedEngineIndex), nameof(IsPmhqSelected), nameof(EngineDescription) })
+            PropertyChanged?.Invoke(this, new(name));
+    }
+
+    private async Task ChangeEngineAsync(ListenerEngine engine)
+    {
+        _changingEngine = true;
+        try
+        {
+            if (engine == _settings.Engine) return;
+            if (TopLevel.GetTopLevel(this) is not { } owner) return;
+            var dialog = new ContentDialog
+            {
+                Title = engine == ListenerEngine.PMHQ ? "PMHQ 是实验性功能" : "切换为 SnowLuma",
+                Content = engine == ListenerEngine.PMHQ
+                    ? "PMHQ 使用本机 QQ，无需 auth_token 或 manager。真实 QQ 注入、签名和发包尚未验证，可能无法接收消息或导致 QQ 异常。切换后请退出并重启 QQ。"
+                    : "切换后请退出并重启 QQ。旧进程退出前，插件会等待，不会向同一个 QQ 进程装载另一套钩子。",
+                PrimaryButtonText = "切换",
+                CloseButtonText = "取消"
+            };
+            if (await dialog.ShowAsync(owner) == ContentDialogResult.Primary) _settings.Engine = engine;
+        }
+        catch (Exception ex) { _diagnostics.RecordError(ex, "切换消息引擎失败"); }
+        finally { _changingEngine = false; RefreshEngineSelection(); }
+    }
+
+    private async void OnOpenPmhqConfigurationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            var bundle = new PmhqBundle(KernelLocator.ResolveNativeDirectory(_settings.SettingsDirectory));
+            await Task.Run(bundle.Prepare);
+            Process.Start(new ProcessStartInfo(bundle.BinaryDirectory) { UseShellExecute = true });
+        }
+        catch (Exception ex) { _diagnostics.RecordError(ex, "打开 PMHQ 内核目录失败"); }
+    }
+
+    private void OnRecheckPmhqClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+        IAppHost.Host?.Services.GetService<QqEngineService>()?.RequestRecheck();
 
     protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {

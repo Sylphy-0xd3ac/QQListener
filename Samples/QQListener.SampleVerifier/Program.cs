@@ -2,6 +2,27 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using QQListener.Models;
 using QQListener.Services;
+using QQListener.Core;
+
+if (args.Length == 2 && args[0] == "--pmhq-smoke")
+{
+    using var pmhq = new PmhqClient(new Uri(args[1]), "fixture-api-token", 42);
+    var health = await pmhq.GetHealthAsync(default);
+    if (health.LoggedIn || health.Pid != 0) throw new InvalidOperationException("The isolated PMHQ fixture must have no QQ session");
+    var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+    var receive = pmhq.ReceiveAsync(_ => throw new InvalidOperationException("No real messages expected"), _ => opened.TrySetResult(), cancel.Token);
+    try { await opened.Task.WaitAsync(cancel.Token); }
+    finally
+    {
+        cancel.Cancel();
+        try { await receive; }
+        catch (OperationCanceledException) { }
+        catch (System.Net.WebSockets.WebSocketException) when (cancel.IsCancellationRequested) { }
+    }
+    Console.WriteLine("PMHQ official-binary smoke passed: authenticated health, WebSocket subscription, cancellation; no QQ login or send tested.");
+    return;
+}
 
 var samplePath = Path.Combine(AppContext.BaseDirectory, "qq-toast-samples.json");
 var samples = JsonSerializer.Deserialize<List<SampleCase>>(File.ReadAllText(samplePath), new JsonSerializerOptions

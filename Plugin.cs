@@ -79,6 +79,8 @@ public class Plugin : PluginBase
         services.AddSingleton<ILessonStateProvider, ClassIslandLessonStateProvider>();
         services.AddSingleton<MessageRuleEvaluator>();
         services.AddSingleton<MessageEventPipeline>();
+        services.AddSingleton<QQListener.Core.EngineCommandRouter>();
+        services.AddSingleton(sp => new MessageReplyService(engines: sp.GetRequiredService<QQListener.Core.EngineCommandRouter>()));
         // Native services use runtime platform checks, including portable net8.0 packages on Windows.
         if (!OperatingSystem.IsWindows())
         {
@@ -88,30 +90,9 @@ public class Plugin : PluginBase
         }
         else
         {
-            // 接管数据源：不再轮询 Windows 通知中心的弹窗文本，改用 SnowLuma 注入 +
-            // HQP1 管道直接解析 QQ 的私有 SSO 报文。IQqNotificationPoller 这层抽象与
-            // QqListenerWorker 的调用方式都不变，只是背后的实现换了。
-            services.AddSingleton(sp =>
-            {
-                // 目录计算必须跟设置页安装向导（QqListenerSettingsPage 构造 KernelSetupViewModel
-                // 时）用的是同一个方法——两边算出不一样的路径，会出现"向导显示安装成功，
-                // 核心却永远找不到文件"的问题，之前这里就是这么坏掉的：CoreService 用的是
-                // 默认参数（插件安装目录），向导装的是 SettingsDirectory/native。
-                var settings = sp.GetRequiredService<QqListenerSettings>();
-                var nativeDir = QQListener.Core.KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory);
-                return new QQListener.Core.CoreService(
-                    findBinary: () => QQListener.Core.KernelLocator.FindHookBinary([nativeDir]));
-            });
-            services.AddHostedService<NativeCoreLifecycleService>();
-            services.AddSingleton<NativeMessageEnrichment>(_ => NativeMessageEnrichment.ForCoreService());
-            services.AddSingleton<IQqNotificationPoller>(sp =>
-                NativeQqMessageSource.ForCoreService(
-                    sp.GetRequiredService<QQListener.Core.CoreService>(),
-                    sp.GetRequiredService<MessageEventPipeline>(),
-                    sp.GetRequiredService<NativeMessageEnrichment>(),
-                    sp.GetRequiredService<QqListenerSettings>(),
-                    sp.GetRequiredService<ILessonStateProvider>(),
-                    sp.GetRequiredService<TimeProvider>()));
+            services.AddSingleton<QqEngineService>();
+            services.AddHostedService(sp => sp.GetRequiredService<QqEngineService>());
+            services.AddSingleton<IQqNotificationPoller>(sp => sp.GetRequiredService<QqEngineService>());
         }
 
         services.AddSingleton<IQqListenerDelay, SystemQqListenerDelay>();

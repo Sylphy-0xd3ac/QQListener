@@ -12,7 +12,8 @@ public sealed class RecvCapture(
     Func<string, IPipeTransport> transportFactory,
     Action? onConnected = null,
     Action? onDisconnected = null,
-    Action<Exception>? onError = null)
+    Action<Exception>? onError = null,
+    Action<LoginState>? onLoginChanged = null)
 {
     private readonly object _gate = new();
     private volatile bool _stopRequested;
@@ -82,9 +83,13 @@ public sealed class RecvCapture(
                     // 会话——不接住的话异常会冒出 client.Run，被外层 catch 当成"连接
                     // 失败"处理，导致一次不必要的断线重连；重连后大概率还会收到同一条
                     // 坏消息，形成反复断连。
-                    onError?.Invoke(ex);
+                    ReportError(ex);
                 }
-            }, login => loginUin = login.LoggedIn ? login.Uin : "");
+            }, login =>
+            {
+                loginUin = login.LoggedIn ? login.Uin : "";
+                onLoginChanged?.Invoke(login);
+            });
         }
         catch (Exception) when (_stopRequested)
         {
@@ -97,7 +102,7 @@ public sealed class RecvCapture(
             // 非预期异常——连接失败、协议解析遇到损坏数据、onMessage 回调本身抛出。
             // 不能吞掉也不能让它逃出线程：报告给调用方（通常用来更新诊断状态），
             // 然后让这次捕获尝试优雅结束；下一轮 Reconcile 会重新尝试连接。
-            onError?.Invoke(ex);
+            ReportError(ex);
         }
         finally
         {
@@ -105,10 +110,16 @@ public sealed class RecvCapture(
             // client.Stop()（→ transport.Dispose()）或 onDisconnected 任何一处抛出，
             // 都会逃出裸 Thread。分别兜住，不让收尾阶段本身破坏这个方法的核心承诺。
             try { client?.Stop(); }
-            catch (Exception ex) { onError?.Invoke(ex); }
+            catch (Exception ex) { ReportError(ex); }
 
             try { onDisconnected?.Invoke(); }
-            catch (Exception ex) { onError?.Invoke(ex); }
+            catch (Exception ex) { ReportError(ex); }
         }
+    }
+
+    private void ReportError(Exception error)
+    {
+        try { onError?.Invoke(error); }
+        catch (Exception) { /* An observer must not terminate this process's capture thread. */ }
     }
 }

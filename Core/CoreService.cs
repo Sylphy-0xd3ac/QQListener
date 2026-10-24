@@ -240,7 +240,7 @@ public sealed class CoreService : IDisposable
                 if (!hasLiveConnection)
                     CoreRuntime.Set(CoreRuntimeState.Waiting, "核心已映射，等待接收管道", pid);
             }
-            catch (RemoteCallTimeoutException exc)
+            catch (Exception exc) when (exc is RemoteCallTimeoutException or RemoteImageRetentionException)
             {
                 // 目标线程仍可能停在 TLS/DllMain 里，ManualMapInjector 因此故意保留了
                 // 已分配的内存不释放——如果就这样让下一轮 Reconcile 照常重试，会每隔
@@ -248,7 +248,7 @@ public sealed class CoreService : IDisposable
                 // 本次会话内不再对它做任何操作，交给用户重启 QQ 来恢复。
                 lock (_gate) _stuckPids.Add(pid);
                 CoreRuntime.Set(CoreRuntimeState.Error,
-                    $"注入超时（pid={pid}）：目标进程可能已残留映像，需要重启 QQ 才能恢复：{exc.Message}", pid);
+                    $"注入或清理未完成（pid={pid}）：目标进程可能已残留映像，需要重启 QQ 才能恢复：{exc.Message}", pid);
             }
             catch (Exception exc)
             {
@@ -271,7 +271,7 @@ public sealed class CoreService : IDisposable
         if (stuckCount > 0)
         {
             CoreRuntime.Set(CoreRuntimeState.Error,
-                $"有 {stuckCount} 个 QQ 进程注入超时后被跳过，需要重启 QQ 才能恢复");
+                $"有 {stuckCount} 个 QQ 进程在注入或清理未完成后被跳过，需要重启 QQ 才能恢复");
             return;
         }
         // RecvCapture 可能在这一轮扫描期间刚把状态推进到 Connected；在这里重新读取，

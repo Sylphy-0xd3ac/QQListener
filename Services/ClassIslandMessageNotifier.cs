@@ -13,11 +13,17 @@ public class ClassIslandMessageNotifier : IDisposable
     private readonly MessageNotificationQueue _queue = new();
     private QqMessageWindow? _activeWindow;
     private bool _disposed;
+    private readonly MessageReplyService? _replyService;
+    private readonly Core.EngineCommandRouter? _engines;
 
-    public ClassIslandMessageNotifier(QqListenerSettings settings, QqListenerDiagnosticsState? diagnostics = null)
+    public ClassIslandMessageNotifier(QqListenerSettings settings, QqListenerDiagnosticsState? diagnostics = null,
+        MessageReplyService? replyService = null, Core.EngineCommandRouter? engines = null)
     {
         this.settings = settings;
         _diagnostics = diagnostics;
+        _replyService = replyService;
+        _engines = engines;
+        if (_engines is not null) _engines.SessionChanged += OnEngineSessionChanged;
         settings.PropertyChanged += OnSettingsChanged;
     }
 
@@ -98,7 +104,7 @@ public class ClassIslandMessageNotifier : IDisposable
                 var window = QqMessageWindow.ShowMessage(item.Message, request.OverlayContent!.Duration,
                     settings.DownloadsDirectory, true, settings.PerformanceMode, settings.DefaultReplyText,
                     request, item.CancellationToken, settings.AutoDownloadFiles, settings.ReplyOnConfirmEnabled,
-                    settings.ReplyWithOkReaction);
+                    settings.ReplyWithOkReaction, _replyService, _engines);
                 _activeWindow = window;
                 window.UpdateQueuedCount(_queue.MessageCount);
                 window.Closed += (_, _) =>
@@ -130,7 +136,7 @@ public class ClassIslandMessageNotifier : IDisposable
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName != nameof(QqListenerSettings.IsEnabled)) return;
+        if (args.PropertyName is not (nameof(QqListenerSettings.IsEnabled) or nameof(QqListenerSettings.Engine))) return;
         if (Dispatcher.UIThread.CheckAccess()) Clear();
         else Dispatcher.UIThread.Post(Clear);
     }
@@ -138,8 +144,16 @@ public class ClassIslandMessageNotifier : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        if (_engines is not null) _engines.SessionChanged -= OnEngineSessionChanged;
         _disposed = true;
         settings.PropertyChanged -= OnSettingsChanged;
+        if (Dispatcher.UIThread.CheckAccess()) Clear();
+        else Dispatcher.UIThread.Post(Clear);
+    }
+
+    private void OnEngineSessionChanged()
+    {
+        if (_disposed) return;
         if (Dispatcher.UIThread.CheckAccess()) Clear();
         else Dispatcher.UIThread.Post(Clear);
     }

@@ -101,21 +101,23 @@ public static class ManualMapInjector
         }
         catch
         {
-            // 只回滚已确认完成的阶段；远程调用超时会由 RemoteCall 保留 trampoline。
+            var cleanup = new List<Action>();
             if (entryAttached && prepared is { Entry: not 0 })
-                Suppress(() => process.RemoteCall(prepared.Entry, baseAddress, Injector.DllProcessDetach, 0));
+                cleanup.Add(() => process.RemoteCall(prepared.Entry, baseAddress, Injector.DllProcessDetach, 0));
             for (var i = attachedTlsCallbacks.Count - 1; i >= 0; i--)
             {
                 var callback = attachedTlsCallbacks[i];
-                Suppress(() => process.RemoteCall(callback, baseAddress, Injector.DllProcessDetach, 0));
+                cleanup.Add(() => process.RemoteCall(callback, baseAddress, Injector.DllProcessDetach, 0));
             }
             if (exceptionRegistered && prepared is not null)
-                Suppress(() =>
+                cleanup.Add(() =>
                 {
                     var deleteFunctionTable = process.TargetApi("ntdll.dll", "RtlDeleteFunctionTable");
-                    process.RemoteCall(deleteFunctionTable, prepared.ExceptionTable);
+                    if (process.RemoteCall(deleteFunctionTable, prepared.ExceptionTable) == 0)
+                        throw new InjectionError("无法注销远程异常表");
                 });
-            Suppress(() => process.Free(baseAddress));
+            cleanup.Add(() => process.Free(baseAddress));
+            RemoteImageCleanup.Run(cleanup);
             throw;
         }
     }
@@ -141,11 +143,6 @@ public static class ManualMapInjector
                 throw new InjectionError("RtlDeleteFunctionTable 返回失败；为安全起见未释放映像");
         }
         process.Free(handle.Base);
-    }
-
-    private static void Suppress(Action action)
-    {
-        try { action(); } catch { /* 回滚阶段本身失败也不能掩盖原始异常 */ }
     }
 
     private static void RequireWindows()

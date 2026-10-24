@@ -46,7 +46,7 @@ public sealed class CapturedMessage
     public string SenderNickname { get; set; } = "";
     public string SenderRemark { get; set; } = "";
     public string SenderGroupCard { get; init; } = "";
-    public string AccountUid { get; init; } = "";
+    public string AccountUid { get; set; } = "";
     public ulong RawSeq { get; init; }
     public int Timestamp { get; init; }
     public int SourcePid { get; set; }

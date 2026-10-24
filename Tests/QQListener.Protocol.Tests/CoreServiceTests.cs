@@ -1,5 +1,8 @@
 using QQListener.Core;
 using QQListener.Native;
+using QQListener.Models;
+using QQListener.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace QQListener.Protocol.Tests;
 
@@ -20,7 +23,11 @@ public class CoreServiceTests : IDisposable
             injectFunc: (pid, _) => { injected.TrySetResult(); return Handle(pid); },
             unloadFunc: (_, _) => { }, hookActive: _ => false,
             recheckMainProcess: _ => true, supported: true);
-        var lifecycle = new QQListener.Services.NativeCoreLifecycleService(service);
+        var settings = new QqListenerSettings();
+        var pipeline = new MessageEventPipeline(settings, new MessageRuleEvaluator(settings),
+            new QqListenerDiagnosticsState(), NullLogger<MessageEventPipeline>.Instance, TimeProvider.System);
+        using var lifecycle = new QqEngineService(settings, pipeline, new AlwaysOffClassProvider(),
+            TimeProvider.System, new EngineCommandRouter(), createSnowCore: () => service, enumeratePids: () => [11]);
         try
         {
             await lifecycle.StartAsync(CancellationToken.None);

@@ -2,6 +2,12 @@
   "version": 1,
   "dependencies": {
     "net8.0-windows10.0.19041": {
+      "CommunityToolkit.Mvvm": {
+        "type": "Direct",
+        "requested": "[8.2.1, )",
+        "resolved": "8.2.1",
+        "contentHash": "I24ofWVEdplxYjUez9/bljv/qb8r8Ccj6cvYXHexNBegLaD3iDy3QrzAAOYVMmfGWIXxlU1ZtECQNfU07+6hXQ=="
+      },
       "Microsoft.Extensions.Hosting.Abstractions": {
         "type": "Direct",
         "requested": "[8.0.0, )",
@@ -325,11 +331,6 @@
           "ClassIsland.Shared": "2.1.0.1",
           "dotnetCampus.Ipc": "2.0.0-alpha410"
         }
-      },
-      "CommunityToolkit.Mvvm": {
-        "type": "Transitive",
-        "resolved": "8.2.1",
-        "contentHash": "I24ofWVEdplxYjUez9/bljv/qb8r8Ccj6cvYXHexNBegLaD3iDy3QrzAAOYVMmfGWIXxlU1ZtECQNfU07+6hXQ=="
       },
       "CsesSharp": {
         "type": "Transitive",

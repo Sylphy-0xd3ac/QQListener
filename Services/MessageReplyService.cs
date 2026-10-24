@@ -1,6 +1,7 @@
 using QQListener.Models;
 using QQListener.Oidb;
 using QQListener.Pipes;
+using QQListener.Core;
 
 namespace QQListener.Services;
 
@@ -12,7 +13,7 @@ namespace QQListener.Services;
 /// 回复带上原消息引用（SrcMsg）——跟 <see cref="QqControlApi"/>
 /// 本身的语义一致。
 /// </summary>
-public sealed class MessageReplyService(Func<int, IPipeTransport>? connect = null)
+public sealed class MessageReplyService(Func<int, IPipeTransport>? connect = null, EngineCommandRouter? engines = null)
 {
     // 复用 QqControlApi.OverNamedPipes() 而不是自己再拼一次 NamedPipeTransport——
     // 之前这里独立构造，漏传了控制管道的读超时，等于绕开了 QqControlApi 本身
@@ -39,7 +40,7 @@ public sealed class MessageReplyService(Func<int, IPipeTransport>? connect = nul
             throw new ArgumentException("回复内容不能为空", nameof(text));
 
         var route = BuildRoute(message);
-        return Task.Run(() => _api.SendTextReply(route, text), cancellationToken);
+        return Task.Run(() => (engines?.ForSession(message.EngineSession) ?? _api).SendTextReply(route, text), cancellationToken);
     }
 
     public Task SendOkReactionAsync(MessageEvent message, CancellationToken cancellationToken = default)
@@ -47,6 +48,6 @@ public sealed class MessageReplyService(Func<int, IPipeTransport>? connect = nul
         if (!message.CanReact)
             throw new InvalidOperationException("这条消息不支持群聊表情回应");
         var route = BuildRoute(message);
-        return Task.Run(() => _api.SendOkReaction(route), cancellationToken);
+        return Task.Run(() => (engines?.ForSession(message.EngineSession) ?? _api).SendOkReaction(route), cancellationToken);
     }
 }

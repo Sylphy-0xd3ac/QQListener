@@ -31,6 +31,9 @@ public partial class QqListenerSettings : ObservableObject
     private bool _isEnabled = true;
 
     [ObservableProperty]
+    private ListenerEngine _engine = ListenerEngine.SnowLuma;
+
+    [ObservableProperty]
     private string _downloadsDirectory = GetDefaultDownloadsDirectory();
 
     [ObservableProperty]
@@ -265,6 +268,7 @@ public partial class QqListenerSettings : ObservableObject
 
     public void Normalize()
     {
+        if (!Enum.IsDefined(Engine)) Engine = ListenerEngine.SnowLuma;
         DownloadsDirectory = string.IsNullOrWhiteSpace(DownloadsDirectory)
             ? GetDefaultDownloadsDirectory() : DownloadsDirectory.Trim();
         CooldownSeconds = Math.Clamp(CooldownSeconds, 1, 3600);

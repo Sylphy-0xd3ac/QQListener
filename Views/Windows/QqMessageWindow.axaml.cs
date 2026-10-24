@@ -52,7 +52,8 @@ public partial class QqMessageWindow : Window
     }
 
     private QqMessageWindow(MessageEvent message, string downloadsDirectory, string defaultReplyText,
-        bool autoDownloadFiles, bool replyOnConfirmEnabled, bool replyWithOkReaction)
+        bool autoDownloadFiles, bool replyOnConfirmEnabled, bool replyWithOkReaction,
+        MessageReplyService? replyService, Core.EngineCommandRouter? engines)
     {
         SenderText = string.IsNullOrWhiteSpace(message.Sender) ? "未知发送者" : message.Sender;
         ConversationText = message.Conversation ?? "";
@@ -66,7 +67,7 @@ public partial class QqMessageWindow : Window
         // 属性先赋值再加载 XAML，绑定一次就能取到正确内容。
         AvaloniaXamlLoader.Load(this);
         DataContext = this;
-        _messageContent = new MessageContentView(message, downloadsDirectory, autoDownloadFiles: autoDownloadFiles);
+        _messageContent = new MessageContentView(message, downloadsDirectory, autoDownloadFiles: autoDownloadFiles, engines: engines);
         this.FindControl<ContentControl>("MessageContentHost")!.Content = _messageContent;
 
         var replyTarget = message.IsPendingDigest ? message.PendingMessages[^1] : message;
@@ -74,7 +75,7 @@ public partial class QqMessageWindow : Window
         host.IsVisible = true;
         if (replyTarget.CanReply || replyTarget.CanReact)
         {
-            var replyBar = new MessageReplyBar(replyTarget, defaultReplyText,
+            var replyBar = new MessageReplyBar(replyTarget, defaultReplyText, replyService,
                 replyOnConfirmEnabled: replyOnConfirmEnabled, replyWithOkReaction: replyWithOkReaction);
             if (message.IsPendingDigest && replyOnConfirmEnabled)
                 replyBar.Children.Insert(0, new TextBlock
@@ -135,10 +136,11 @@ public partial class QqMessageWindow : Window
     public static QqMessageWindow ShowMessage(MessageEvent message, TimeSpan duration,
         string? downloadsDirectory = null, bool topmost = true, bool performanceMode = false, string defaultReplyText = "收到",
         NotificationRequest? notificationRequest = null, CancellationToken cancellationToken = default,
-        bool autoDownloadFiles = false, bool replyOnConfirmEnabled = false, bool replyWithOkReaction = false)
+        bool autoDownloadFiles = false, bool replyOnConfirmEnabled = false, bool replyWithOkReaction = false,
+        MessageReplyService? replyService = null, Core.EngineCommandRouter? engines = null)
     {
         var window = new QqMessageWindow(message, downloadsDirectory ?? new QqListenerSettings().DownloadsDirectory,
-            defaultReplyText, autoDownloadFiles, replyOnConfirmEnabled, replyWithOkReaction)
+            defaultReplyText, autoDownloadFiles, replyOnConfirmEnabled, replyWithOkReaction, replyService, engines)
         {
             Topmost = topmost,
             _performanceMode = performanceMode

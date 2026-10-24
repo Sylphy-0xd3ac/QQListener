@@ -10,7 +10,8 @@ public sealed class QqImageDownloadException(int? code = null) : IOException(
         : "QQ 返回的不是图片，可能是下载凭证失效，请重试");
 
 public sealed class MessageImageDownloader(
-    MessageAttachmentDownloader downloader, Func<int, IReadOnlyList<RKeyInfo>>? fetchRKeys = null)
+    MessageAttachmentDownloader downloader, Func<int, IReadOnlyList<RKeyInfo>>? fetchRKeys = null,
+    Func<MessageContentBlock, IReadOnlyList<RKeyInfo>>? fetchForImage = null)
 {
     private readonly Func<int, IReadOnlyList<RKeyInfo>> _fetch = fetchRKeys
         ?? QqControlApi.OverNamedPipes().FetchRKeys;
@@ -36,7 +37,7 @@ public sealed class MessageImageDownloader(
             IReadOnlyList<RKeyInfo> keys;
             try
             {
-                keys = await Task.Run(() => _fetch(image.SourcePid), cancellationToken)
+                keys = await Task.Run(() => fetchForImage is null ? _fetch(image.SourcePid) : fetchForImage(image), cancellationToken)
                     .WaitAsync(cancellationToken);
             }
             catch (OperationCanceledException) { throw; }

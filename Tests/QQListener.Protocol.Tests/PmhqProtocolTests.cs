@@ -1,0 +1,111 @@
+using System.Text;
+using QQListener.Core;
+using QQListener.Models;
+using QQListener.Oidb;
+
+namespace QQListener.Protocol.Tests;
+
+public sealed class PmhqProtocolTests
+{
+    private static byte[] Json(string text) => Encoding.UTF8.GetBytes(text);
+
+    [Theory]
+    [InlineData("{\"qq_pid\":42,\"uin\":12345,\"uid\":\"u_self\"}", true)]
+    [InlineData("{\"qq_pid\":42,\"uin\":\"12345\",\"uid\":\"u_self\"}", true)]
+    [InlineData("{\"qq_pid\":null,\"uin\":null,\"uid\":null}", false)]
+    [InlineData("{\"qq_pid\":\"42\",\"uin\":12345,\"uid\":\"u_self\"}", false)]
+    [InlineData("{\"qq_pid\":42,\"uin\":0,\"uid\":\"u_self\"}", false)]
+    public void HealthRequiresMatchingProcessAndCompleteLogin(string text, bool ready) =>
+        Assert.Equal(ready, PmhqProtocol.ReadHealth(Json(text)).LoggedIn);
+
+    [Theory]
+    [InlineData("{\"type\":\"recv\",\"code\":0,\"data\":{\"echo\":\"test\",\"cmd\":\"test.cmd\",\"pb\":\"0001aBff\"}}")]
+    [InlineData("{\"type\":\"send\",\"code\":0,\"data\":{\"echo\":\"test\",\"cmd\":\"test.cmd\",\"pb\":\"0001aBff\"}}")]
+    public void BothDocumentedReplyKindsAreAccepted(string json) =>
+        Assert.Equal(new byte[] { 0, 1, 0xab, 0xff }, PmhqProtocol.ReadReply(Json(json), "test", "test.cmd"));
+
+    [Theory]
+    [InlineData("{\"type\":\"recv\",\"code\":-100,\"message\":\"secret=do-not-log\",\"data\":{\"echo\":\"test\",\"cmd\":\"test.cmd\",\"pb\":\"00\"}}")]
+    [InlineData("{\"type\":\"recv\",\"data\":{\"echo\":\"test\",\"cmd\":\"test.cmd\",\"pb\":\"00\"}}")]
+    [InlineData("{\"type\":\"recv\",\"code\":0,\"data\":{\"echo\":\"wrong\",\"cmd\":\"test.cmd\",\"pb\":\"00\"}}")]
+    [InlineData("{\"type\":\"recv\",\"code\":0,\"data\":{\"echo\":\"test\",\"cmd\":\"wrong\",\"pb\":\"00\"}}")]
+    [InlineData("{\"type\":\"recv\",\"code\":0,\"data\":{\"echo\":\"test\",\"cmd\":\"test.cmd\",\"pb\":\"0z\"}}")]
+    [InlineData("[]")]
+    [InlineData("invalid secret=do-not-log")]
+    public void InvalidOrFailedRepliesNeverBecomeSuccessfulSends(string json)
+    {
+        var error = Assert.Throws<IOException>(() => PmhqProtocol.ReadReply(Json(json), "test", "test.cmd"));
+        Assert.DoesNotContain("do-not-log", error.Message);
+    }
+
+    [Fact]
+    public void EchoedResponsesAndOutgoingFramesNeverEnterNotificationPipeline()
+    {
+        const string push = "trpc.msg.olpush.OlPushService.MsgPush";
+        foreach (var json in new[] {
+                     """{"type":"recv","code":0,"data":{"echo":"request","cmd":"PUSH","pb":"00"}}""".Replace("PUSH", push),
+                     """{"type":"send","data":{"cmd":"PUSH","pb":"00"}}""".Replace("PUSH", push),
+                     """{"type":"recv","data":{"cmd":"other","pb":"00"}}""" })
+            Assert.Null(PmhqProtocol.ReadPush(Json(json), "10000"));
+    }
+
+    [Fact]
+    public void OldCommandHandlesCannotBeUsedAfterSwitchingEngineOrAccount()
+    {
+        var router = new EngineCommandRouter();
+        var sends = 0;
+        var first = Guid.NewGuid();
+        router.Bind(first, QqControlApi.OverRequests((_, _, _) => { sends++; return []; }));
+        var old = router.ForSession(first);
+        router.Bind(Guid.NewGuid(), QqControlApi.OverRequests((_, _, _) => []));
+        Assert.Throws<InvalidOperationException>(() => router.ForSession(first));
+        Assert.Throws<InvalidOperationException>(() => old.SendRaw(42, "test", []));
+        Assert.Equal(0, sends);
+    }
+
+    [Fact]
+    public void FailingUiObserverDoesNotLeaveANewEngineHalfStarted()
+    {
+        var router = new EngineCommandRouter();
+        router.SessionChanged += () => throw new InvalidOperationException("synthetic observer failure");
+        var observed = false;
+        router.SessionChanged += () => observed = true;
+        var session = Guid.NewGuid();
+        router.Bind(session, QqControlApi.OverRequests((_, _, _) => []));
+        Assert.True(observed);
+        Assert.True(router.IsCurrent(session));
+    }
+
+    [Fact]
+    public void SwitchingEnginesWaitsForOldQqProcessesWithoutBlockingUnrelatedProcesses()
+    {
+        var guard = new EngineSwitchGuard();
+        guard.RequireRestart([42, 43]);
+        Assert.False(guard.CanStart([42, 99]));
+        Assert.True(guard.CanStart([99]));
+    }
+
+    [Fact]
+    public void BundleExtractsExactlyTheReviewedBinariesAndPreservesUserConfiguration()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "QQListener-PMHQ-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var bundle = new PmhqBundle(root);
+            bundle.Prepare();
+            bundle.RememberResidentHook(42, 123456);
+            Assert.True(bundle.HasResidentHook(42, 123456));
+            Assert.False(bundle.HasResidentHook(42, 123457)); // Reused PID belongs to a different process.
+            Assert.False(bundle.HasResidentHook(43, 123456));
+            Assert.False(File.Exists(Path.Combine(bundle.BinaryDirectory, "pmhq-win-x64.exe")));
+            Assert.False(File.Exists(bundle.ConfigurationPath));
+            Assert.Equal(1_076_224, new FileInfo(Path.Combine(bundle.BinaryDirectory, "pmhq.dll")).Length);
+            File.WriteAllText(bundle.ConfigurationPath, "user-managed-configuration");
+            File.WriteAllText(Path.Combine(bundle.BinaryDirectory, "pmhq.dll"), "damaged");
+            bundle.Prepare();
+            Assert.Equal(1_076_224, new FileInfo(Path.Combine(bundle.BinaryDirectory, "pmhq.dll")).Length);
+            Assert.Equal("user-managed-configuration", File.ReadAllText(bundle.ConfigurationPath));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+}

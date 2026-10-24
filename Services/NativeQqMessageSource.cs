@@ -46,6 +46,9 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
     private readonly Func<int>? _getAfterClassDelaySeconds;
     private readonly Func<bool>? _excludeSelfMessages;
     private readonly TimeProvider _time;
+    private readonly Action<int, LoginState>? _onLoginChanged;
+    private readonly Func<bool>? _isEnabled;
+    private const int MaxLiveQueue = 500;
 
     /// <summary>消息落进 <see cref="_queue"/> 时完成一次，用来即时唤醒轮询方。
     /// 每次唤醒后换一个新的实例，等价于一个 auto-reset 事件。</summary>
@@ -65,7 +68,9 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         Func<bool>? isOnClass = null,
         Func<int>? getAfterClassDelaySeconds = null,
         Func<bool>? excludeSelfMessages = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Action<int, LoginState>? onLoginChanged = null,
+        Func<bool>? isEnabled = null)
     {
         _getActivePids = getActivePids;
         _connectTransport = connectTransport;
@@ -81,6 +86,8 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         _getAfterClassDelaySeconds = getAfterClassDelaySeconds;
         _excludeSelfMessages = excludeSelfMessages;
         _time = timeProvider ?? TimeProvider.System;
+        _onLoginChanged = onLoginChanged;
+        _isEnabled = isEnabled;
     }
 
     /// <summary>真实接线：走命名管道，把连接状态变化同步进 <see cref="CoreRuntime"/>，
@@ -118,7 +125,7 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         isOnClass: () => settings.DisableDuringClass && lessonState.IsOnClass,
         getAfterClassDelaySeconds: () => settings.DisableDuringClass ? settings.AfterClassDelaySeconds : 0,
         excludeSelfMessages: () => settings.ExcludeSelfMessages,
-        timeProvider: timeProvider);
+        timeProvider: timeProvider, isEnabled: () => settings.IsEnabled);
 
     public Task<QqNotificationPollResult> PollAsync(bool retryPermission, CancellationToken cancellationToken)
     {
@@ -175,7 +182,7 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
     /// <summary>按 <c>getActivePids</c> 当前的结果，起停后台捕获线程；公开以便测试直接驱动。</summary>
     public void Reconcile()
     {
-        if (_disposed) return;
+        if (_disposed || _isEnabled?.Invoke() == false) return;
         var active = new HashSet<int>(_getActivePids());
 
         List<(int Pid, RecvCapture Capture)> toStop;
@@ -211,7 +218,8 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
                 _onCaptureDisconnected?.Invoke(pid);
                 RemoveIfCurrent(pid, capture!);
             },
-            onError: ex => _onCaptureError?.Invoke(pid, ex));
+            onError: ex => _onCaptureError?.Invoke(pid, ex),
+            onLoginChanged: login => _onLoginChanged?.Invoke(pid, login));
 
         lock (_gate) _running[pid] = capture;
         new Thread(capture.Run) { Name = $"QQListener-Recv-{pid}", IsBackground = true }.Start();
@@ -229,8 +237,24 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
     /// 这几步都是同步调用（会阻塞这个 pid 专属的捕获线程），换来的是不需要处理
     /// 额外的异步竞态/乱序；每一步内部都有超时和失败降级，见 NativeMessageEnrichment。
     /// </summary>
+    public void Accept(CapturedMessage message) => ProcessMessage(message);
+
+    public void ClearSessionState()
+    {
+        lock (_deliveryGate)
+        {
+            _pendingQueue.Clear();
+            while (_queue.TryDequeue(out _)) { }
+            _wasPaused = _wasOnClass = false;
+            _classReleaseAt = null;
+        }
+        _resetState?.Invoke();
+        Interlocked.Exchange(ref _arrival, CreateArrivalSignal()).TrySetResult(true);
+    }
+
     private void ProcessMessage(CapturedMessage message)
     {
+        if (_disposed || _isEnabled?.Invoke() == false || _getCoreState?.Invoke() == CoreState.Detached) return;
         if ((_excludeSelfMessages?.Invoke() ?? true) && message.IsSelf) return;
         _enrichment?.EnrichSenderProfile(message);
 
@@ -243,7 +267,7 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
         _enrichment?.EnrichSegments(message);
         lock (_deliveryGate)
         {
-            if (_disposed) return;
+            if (_disposed || _isEnabled?.Invoke() == false) return;
             var state = _getCoreState?.Invoke() ?? CoreState.Running;
             if (state == CoreState.Detached) return;
             if (ShouldHold(state))
@@ -254,7 +278,11 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
                 _pendingQueue.Push(accepted, _getPendingLimit?.Invoke());
                 _wasPaused = true;
             }
-            else _queue.Enqueue(accepted);
+            else
+            {
+                while (_queue.Count >= MaxLiveQueue) _queue.TryDequeue(out _);
+                _queue.Enqueue(accepted);
+            }
         }
         // 先入队再叫醒：被唤醒的一方一定能看到这条消息。
         Interlocked.Exchange(ref _arrival, CreateArrivalSignal()).TrySetResult(true);
@@ -305,6 +333,7 @@ public sealed class NativeQqMessageSource : IQqNotificationPoller, IDisposable
             _running.Clear();
         }
         foreach (var capture in captures) capture.Stop();
+        Volatile.Read(ref _arrival).TrySetResult(true);
         lock (_deliveryGate)
         {
             _pendingQueue.Clear();

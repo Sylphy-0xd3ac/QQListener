@@ -7,6 +7,14 @@ namespace QQListener.Protocol.Tests;
 public class RecvCaptureTests
 {
     [Fact]
+    public void ThrowingErrorAndDisconnectObserversCannotEscapeTheCaptureThread()
+    {
+        var capture = new RecvCapture(1, _ => { }, _ => throw new IOException("synthetic"),
+            onDisconnected: () => throw new InvalidOperationException("synthetic"),
+            onError: _ => throw new InvalidOperationException("synthetic"));
+        Assert.Null(Record.Exception(capture.Run));
+    }
+    [Fact]
     public void LoginStateSuppliesSelfAccountWhenThePacketOmitsIt()
     {
         var response = Pb.Cat(Pb.VarintField(1, 10000), Pb.LenField(8, Pb.VarintField(1, 123456)));

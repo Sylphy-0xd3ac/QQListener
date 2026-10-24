@@ -51,6 +51,13 @@ public class MessageEventPipeline(
 
         lock (_lock)
         {
+            if (_seen.TryGetValue(messageEvent.DeduplicationKey, out var concurrentSeen)
+                && now - concurrentSeen < cooldown)
+            {
+                const string reason = "并发重复消息，跳过重复内容";
+                diagnostics.RecordIgnored(reason);
+                return MessagePipelineResult.Ignore(reason, messageEvent);
+            }
             _seen[messageEvent.DeduplicationKey] = now;
             CleanupSeen(now, cooldown);
         }

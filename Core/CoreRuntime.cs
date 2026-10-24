@@ -26,7 +26,7 @@ public static class CoreRuntime
     }
 
     /// <summary>重置回启动前的默认快照：测试用它隔离用例；
-    /// <see cref="Services.NativeCoreLifecycleService.StopAsync"/> 停止插件时也要调用，
+    /// <see cref="Services.QqEngineService"/> 停止插件时也要调用，
     /// 理由跟 <see cref="CoreController.ResetToDefault"/> 一致——这是进程级静态状态。</summary>
     internal static void ResetToDefault() => Set(CoreRuntimeState.Waiting, "等待核心服务启动");
 }

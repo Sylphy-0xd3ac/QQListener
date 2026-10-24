@@ -26,11 +26,13 @@ public sealed class MessageContentView : StackPanel, IDisposable
     private bool _disposed;
 
     public MessageContentView(MessageEvent message, string directory,
-        MessageAttachmentDownloader? downloader = null, bool autoDownloadFiles = false)
+        MessageAttachmentDownloader? downloader = null, bool autoDownloadFiles = false,
+        Core.EngineCommandRouter? engines = null)
     {
         _directory = directory;
         _downloader = downloader ?? Downloader;
-        _imageDownloader = new MessageImageDownloader(_downloader);
+        _imageDownloader = new MessageImageDownloader(_downloader, fetchForImage: engines is null ? null
+            : image => engines.ForSession(image.EngineSession).FetchRKeys(image.SourcePid));
         _autoDownloadFiles = autoDownloadFiles;
         Spacing = 10;
         AddBlocks(this, MessageContentPresentation.Create(message));

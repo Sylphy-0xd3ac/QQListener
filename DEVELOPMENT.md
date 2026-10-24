@@ -28,6 +28,10 @@ dotnet run --project Samples/QQListener.UiPreview/QQListener.UiPreview.csproj -c
 
 图片协议的独立交叉对照数据及再生成方法见 [Fixtures](Tests/QQListener.Protocol.Tests/Fixtures/README.md)。
 
+双引擎的传输、会话隔离、内置文件身份及上游对照见 [review 记录](docs/reviews/dual-engine.md)。PMHQ 本地签名补丁源码位于 `Tools/PMHQ.LocalSign/`；它的原始 Rust 内核源码不在本仓库。
+
+当前 PMHQ 引擎使用 `PmhqLocalClient`，不运行原 EXE 或 HTTP/WS 服务。`PmhqClient` 与 SampleVerifier 的 `--pmhq-smoke` 仅保留为官方 HTTP 接口的开发对照，不参与插件运行。原生本机初始化及命令管道的隔离验证边界见 review 记录；真实 QQ 收发仍需 Windows 验收。
+
 ## 打包
 
 ```sh

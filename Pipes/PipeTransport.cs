@@ -31,11 +31,11 @@ public sealed class NamedPipeTransport : IPipeTransport
 {
     private readonly NamedPipeClientStream _stream;
     private readonly int _readTimeoutMs;
+    private readonly CancellationTokenSource? _operationDeadline;
 
     /// <summary>
-    /// <paramref name="readTimeoutMs"/> 默认不超时——recv 管道是长连接，长时间没有新
-    /// 消息完全正常。control 管道是一次性请求/应答，调用方（<c>QqControlApi</c>）
-    /// 会传一个有限值，避免内核卡死时把线程池线程永久占住。
+    /// <paramref name="readTimeoutMs"/> 默认不超时；为短连接指定时，限制连接后整次
+    /// 请求的读写总时长。recv 是长连接，control 则由 QqControlApi 指定有限值。
     /// </summary>
     public NamedPipeTransport(string pipeName, int connectTimeoutMs = 3000, int readTimeoutMs = Timeout.Infinite)
     {
@@ -45,6 +45,7 @@ public sealed class NamedPipeTransport : IPipeTransport
         try
         {
             _stream.Connect(connectTimeoutMs);
+            if (readTimeoutMs != Timeout.Infinite) _operationDeadline = new CancellationTokenSource(readTimeoutMs);
         }
         catch
         {
@@ -71,14 +72,13 @@ public sealed class NamedPipeTransport : IPipeTransport
         var pooled = System.Buffers.ArrayPool<byte>.Shared.Rent(buffer.Length);
         try
         {
-            using var cts = new CancellationTokenSource(_readTimeoutMs);
             int read;
             try
             {
-                read = _stream.ReadAsync(pooled.AsMemory(0, buffer.Length), cts.Token)
+                read = _stream.ReadAsync(pooled.AsMemory(0, buffer.Length), _operationDeadline!.Token)
                     .AsTask().GetAwaiter().GetResult();
             }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            catch (OperationCanceledException) when (_operationDeadline!.IsCancellationRequested)
             {
                 throw new TimeoutException($"管道读取在 {_readTimeoutMs}ms 内没有返回数据");
             }
@@ -93,9 +93,26 @@ public sealed class NamedPipeTransport : IPipeTransport
 
     public void Write(ReadOnlySpan<byte> data)
     {
+        if (_operationDeadline is not null)
+        {
+            try
+            {
+                _stream.WriteAsync(data.ToArray(), _operationDeadline.Token).AsTask().GetAwaiter().GetResult();
+                _stream.FlushAsync(_operationDeadline.Token).GetAwaiter().GetResult();
+                return;
+            }
+            catch (OperationCanceledException) when (_operationDeadline.IsCancellationRequested)
+            {
+                throw new TimeoutException($"管道请求在 {_readTimeoutMs}ms 内未完成");
+            }
+        }
         _stream.Write(data);
         _stream.Flush();
     }
 
-    public void Dispose() => _stream.Dispose();
+    public void Dispose()
+    {
+        _stream.Dispose();
+        _operationDeadline?.Dispose();
+    }
 }

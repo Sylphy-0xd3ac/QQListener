@@ -241,6 +241,27 @@ internal static class Program
             using (var frame = settings.CaptureRenderedFrame()!)
                 frame.Save(Path.Combine(directory, $"Settings-{theme}.png"));
             settings.Close();
+
+            var pmhqSettings = new QqListenerSettings { Engine = ListenerEngine.PMHQ };
+            var page = new QqListenerSettingsPage(pmhqSettings, new QqListenerDiagnosticsState(), QqListenerPluginInfo.Designer);
+            var experimental = new Window { Width = 680, Height = 800, Content = page };
+            experimental.Show();
+            Pump(TimeSpan.FromMilliseconds(300));
+            var selector = experimental.GetVisualDescendants().OfType<ComboBox>()
+                .Single(combo => combo.Items.Cast<object>().Any(item => item as string == "PMHQ（实验性）"));
+            if (selector.SelectedIndex != 1) throw new InvalidOperationException("引擎选择未恢复为 PMHQ");
+            var engine = experimental.GetVisualDescendants().OfType<SettingsExpander>()
+                .Single(item => item.Header as string == "消息引擎");
+            engine.IsExpanded = true;
+            Pump(TimeSpan.FromMilliseconds(300));
+            engine.BringIntoView();
+            Pump(TimeSpan.FromMilliseconds(300));
+            if (!experimental.GetVisualDescendants().OfType<TextBlock>()
+                    .Any(text => text.Text?.StartsWith("实验性功能：", StringComparison.Ordinal) == true))
+                throw new InvalidOperationException("PMHQ 实验性警告不可见");
+            using (var frame = experimental.CaptureRenderedFrame()!)
+                frame.Save(Path.Combine(directory, $"Settings-PMHQ-{theme}.png"));
+            experimental.Close();
         }
         Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
         Console.WriteLine("Light/dark message and settings previews OK");
@@ -370,7 +391,8 @@ internal static class Program
             _response = Wire.Concat(Hqp1.EncodeFrame(PipeOp.Hello),
                 Hqp1.EncodeFrame(PipeOp.SendAck, requestId: 1),
                 Hqp1.EncodeFrame(PipeOp.SendReply, requestId: 1,
-                    body: Wire.EncodeVarintField(reaction ? 3 : 1, fail ? 1UL : 0UL)));
+                    body: Wire.Concat(Wire.EncodeVarintField(reaction ? 3 : 1, fail ? 1UL : 0UL),
+                        !reaction && !fail ? Wire.EncodeVarintField(11, 88) : [])));
         }
         public int Read(Span<byte> buffer)
         {

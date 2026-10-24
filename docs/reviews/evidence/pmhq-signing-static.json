@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-24",
+  "scope": "PMHQ v9.0.6 Windows x64 direct DLL runtime; selected native paths and managed integration",
+  "tools": ["Ghidra 11.3.2", "Capstone"],
+  "sha256": {
+    "Assets/PMHQ/win-x64/pmhq.dll": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
+    "upstream-original-pmhq.dll": "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4",
+    "Core/PmhqLocalClient.cs": "02b6ba40b0ea79032c62518e857b1de7b480bd3f050e781a397fec422f516896",
+    "Core/PmhqHost.cs": "6f0ece2ce64b29a786c39f2b173e941787b631b440a2ef2f0de7562184cc521e",
+    "Oidb/MessageSender.cs": "92dcad413e17584b69f2927feb4997a8ebe3624d8de32b6f1eba5a25a4f1cc30",
+    "Oidb/QqControlApi.cs": "bd19422e13ae8bb06459c4d3db3ee9358af85ef32bcfb26ab121652ed8577c1e"
+  },
+  "upstream_commits": {
+    "SnowLuma/SnowLuma": "f8cb15c27bca3d2d1bd044a921e55bfc44bb5e60",
+    "LLOneBot/LuckyLilliaBot": "dc2b2b90092ef0f571b5546878288b83fff1e436"
+  },
+  "rva": {
+    "command_dispatch": "0x29ed",
+    "active_send_to_captured_QQ_pointer": "0xd4e5",
+    "native_initialization": "0x126e6",
+    "dump_sign_flag": "0xf571b",
+    "sign_detour": "0x10a5a",
+    "sign_rpc_worker_wrapper": "0x97c7",
+    "sign_rpc_pipe_server": "0x3cb5",
+    "last_observed_UIN": "0xf31d8",
+    "send_detour_updates_UIN": "0x21244",
+    "trace_serializer_reads_UIN": "0x2450b",
+    "native_initialized_flag": "0xf56f1"
+  },
+  "default_transport": "pmhq_cmd_<QQ PID>",
+  "explicit_pmhq_sign_RPC_called_by_default_runtime": false,
+  "real_QQ_final_signing_verified": false,
+  "real_QQ_delivery_verified": false,
+  "UIN_cache_is_live_login_query": false,
+  "regression_tests": {
+    "passed": 635,
+    "failed": 0,
+    "skipped": 0,
+    "protocol_and_lifecycle": 373,
+    "models_and_services": 262,
+    "trx_prefix": "pmhq-sign-reviewed"
+  },
+  "limitations": [
+    "Static analysis stops at the captured QQ send function pointer.",
+    "Native isolated probe replaces a fixture output-queue callback and disables QQ hooks; it is not an end-to-end QQ or complete native writer test.",
+    "Managed account tests substitute the account source; native cache refresh timing is not established.",
+    "This is not a full audit of the closed-source PMHQ DLL."
+  ]
+}

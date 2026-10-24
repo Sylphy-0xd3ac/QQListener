@@ -29,7 +29,9 @@ public partial class KernelSetupViewModel : ObservableObject
     private string _currentVersionText = "未安装";
 
     /// <summary>内核卡片第三行：装了什么版本、现在是什么状态，一句话说完。</summary>
-    public string KernelVersionLine => !IsSupported
+    public string KernelVersionLine => _settings.Engine == ListenerEngine.PMHQ
+        ? $"PMHQ {PmhqBundle.Version}（内置 · 实验性） · {ControlStateText}"
+        : !IsSupported
         ? "原生捕获仅在 Windows x64 上可用"
         : IsInstalled
             ? $"内核 {CurrentVersionText} · {ControlStateText}"
@@ -149,6 +151,7 @@ public partial class KernelSetupViewModel : ObservableObject
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(QqListenerSettings.Engine)) OnPropertyChanged(nameof(KernelVersionLine));
         if (e.PropertyName is nameof(QqListenerSettings.KernelEulaAccepted))
             OnPropertyChanged(nameof(EulaAccepted));
         if (e.PropertyName is nameof(QqListenerSettings.KernelDownloadProxy))
@@ -167,7 +170,8 @@ public partial class KernelSetupViewModel : ObservableObject
         // 服务根本不会启动，状态就永远停在那句话上——比"不支持"更容易让人误以为
         // 只是还没转起来。这里直接按平台盖掉。
         var snapshot = IsSupported ? CoreRuntime.Get() : new CoreRuntimeSnapshot(CoreRuntimeState.Unsupported);
-        RuntimeStateText = FormatRuntimeState(snapshot);
+        RuntimeStateText = _settings.Engine == ListenerEngine.PMHQ && !string.IsNullOrWhiteSpace(snapshot.Detail)
+            ? snapshot.Detail : FormatRuntimeState(snapshot);
 
         RuntimeStateHeadline = snapshot.State switch
         {

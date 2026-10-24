@@ -5,7 +5,7 @@ namespace QQListener.Models;
 
 public sealed record MessageContentBlock(
     string Kind, string Text, string Url = "", IReadOnlyList<MessageContentBlock>? Children = null,
-    int SourcePid = 0, bool IsGroup = false);
+    int SourcePid = 0, bool IsGroup = false, Guid EngineSession = default);
 
 /// <summary>只负责展示：保留媒体与引用结构，并限制异常深度和元素数量。</summary>
 public static class MessageContentPresentation
@@ -65,7 +65,8 @@ public static class MessageContentPresentation
                 };
                 blocks.Add(new(segment.Type,
                     string.IsNullOrWhiteSpace(segment.Name) ? label : segment.Name, segment.Url,
-                    SourcePid: message.SourcePid, IsGroup: message.Scene == "group"));
+                    SourcePid: message.SourcePid, IsGroup: message.Scene == "group",
+                    EngineSession: message.EngineSession));
             }
             else blocks.Add(new("text", string.IsNullOrEmpty(segment.Text)
                 ? $"[{segment.Type}]" : segment.Text));

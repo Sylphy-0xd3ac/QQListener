@@ -9,6 +9,18 @@ namespace QQListener.Tests.Services;
 public sealed class MessageEventPipelineTests
 {
     [Fact]
+    public void ConcurrentCopiesOfOneMessageAreAcceptedOnlyOnce()
+    {
+        var pipeline = CreatePipeline(new QqListenerSettings(), TimeProvider.System);
+        var accepted = 0;
+        Parallel.For(0, 100, _ =>
+        {
+            if (pipeline.Process(Event("same-event")).Accepted) Interlocked.Increment(ref accepted);
+        });
+        Assert.Equal(1, accepted);
+    }
+
+    [Fact]
     public void CleanupNeverExpiresBeforeConfiguredCooldown()
     {
         var time = new ManualTimeProvider(DateTimeOffset.Parse("2026-07-17T00:00:00Z"));

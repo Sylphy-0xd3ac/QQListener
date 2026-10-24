@@ -112,14 +112,20 @@ public static class MessageSender
         return Wire.Concat(request, Wire.EncodeVarintField(14, 0));
     }
 
-    public static SendResult ParseResponse(ReadOnlySpan<byte> data)
+    public static SendResult ParseResponse(ReadOnlySpan<byte> data, bool? isGroup = null)
     {
+        if (data.IsEmpty) throw new IOException("QQ 未返回消息发送回执，请先检查会话，避免重复发送");
         var fields = Wire.DecodeFields(data);
+        foreach (var number in new[] { 1, 11, 14 })
+            if (Wire.First(fields, number) is { Type: not WireType.Varint })
+                throw new InvalidDataException("QQ 消息发送回执格式不正确");
+        if (Wire.First(fields, 2) is { Type: not WireType.Len })
+            throw new InvalidDataException("QQ 消息发送回执格式不正确");
 
         long sequence = 0;
-        if (Wire.First(fields, 11) is { } groupSeq)
+        if (isGroup != false && Wire.First(fields, 11) is { } groupSeq)
             sequence = (long)Wire.AsInt(groupSeq);
-        else if (Wire.First(fields, 14) is { } privateSeq)
+        else if (isGroup != true && Wire.First(fields, 14) is { } privateSeq)
             sequence = (long)Wire.AsInt(privateSeq);
 
         return new SendResult(

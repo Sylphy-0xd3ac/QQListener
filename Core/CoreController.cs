@@ -82,7 +82,7 @@ public static class CoreController
 
     /// <summary>
     /// 把全局状态重置回默认值：测试用它隔离用例；生产代码里
-    /// <see cref="Services.NativeCoreLifecycleService.StopAsync"/> 在插件停止时
+    /// <see cref="Services.QqEngineService"/> 在插件停止时
     /// 也要调用——这是进程级静态状态，如果 ClassIsland 允许"禁用插件再重新启用"
     /// 而不重启整个宿主进程，上一轮残留的 Detached/Paused 状态和监听器列表会
     /// 原样带进下一轮，新的 CoreService 首次 Reconcile 就会读到一个跟这次启动

@@ -11,6 +11,10 @@ namespace QQListener.Oidb;
 /// </summary>
 public sealed class QqControlApi(Func<int, IPipeTransport> connect)
 {
+    private Func<int, string, byte[], byte[]>? _request;
+
+    public static QqControlApi OverRequests(Func<int, string, byte[], byte[]> request) =>
+        new(_ => throw new InvalidOperationException()) { _request = request };
     public const string CmdRKey = "OidbSvcTrpcTcp.0x9067_202";
     public const string CmdGroupFile = "OidbSvcTrpcTcp.0x6d6_2";
     public const string CmdPrivateFile = "OidbSvcTrpcTcp.0xe37_1200";
@@ -31,6 +35,7 @@ public sealed class QqControlApi(Func<int, IPipeTransport> connect)
 
     private byte[] Request(int pid, string cmd, byte[] body)
     {
+        if (_request is not null) return _request(pid, cmd, body);
         using var client = new ControlClient(connect(pid));
         var reply = client.Send(cmd, body);
         if (reply.Error != 0)
@@ -39,6 +44,8 @@ public sealed class QqControlApi(Func<int, IPipeTransport> connect)
                 : $"QQ request error: {reply.Error}");
         return reply.Body;
     }
+
+    public byte[] SendRaw(int pid, string cmd, byte[] body) => Request(pid, cmd, body);
 
     public IReadOnlyList<RKeyInfo> FetchRKeys(int pid) =>
         RKey.ParseResponse(Request(pid, CmdRKey, RKey.BuildRequest()));
@@ -89,12 +96,14 @@ public sealed class QqControlApi(Func<int, IPipeTransport> connect)
             quoteTime: route.QuoteTime);
 
         var result = MessageSender.ParseResponse(
-            Request(route.Pid, MessageSender.SendMsgCmd, request));
+            Request(route.Pid, MessageSender.SendMsgCmd, request), isGroup);
 
         if (result.Result != 0)
             throw new IOException(result.ErrorMessage.Length > 0
                 ? result.ErrorMessage
                 : $"send message rejected: result={result.Result}");
+        if (isGroup && result.Sequence <= 0)
+            throw new IOException("QQ 未返回群消息回执，发送结果未确认；请先检查会话，避免重复发送");
         return result;
     }
 

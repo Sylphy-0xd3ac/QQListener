@@ -23,6 +23,7 @@ public sealed record MessageEvent(
     /// <summary>"group" 或 "c2c"，构造回复请求时决定走群聊路由还是私聊路由。</summary>
     public string Scene { get; init; } = "";
     public int SourcePid { get; init; }
+    public Guid EngineSession { get; init; }
     public string PeerUid { get; init; } = "";
     public long RawSeq { get; init; }
 
