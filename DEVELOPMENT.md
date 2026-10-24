@@ -46,7 +46,7 @@ dotnet build QQListener.csproj -c Release -p:CreateCipx=true -p:RestoreLockedMod
 
 ## 发布校验
 
-对外发布使用 SemVer（例如 `2.3.0-beta.1`）。ClassIsland 清单与程序集使用四段数字版本（此版本为 `2.3.0.1`），前三段与发布版本一致；第四段是同一版本系列内递增的构建号，后续测试版和正式版均递增，不归零。同步维护以下位置：
+对外发布使用 SemVer（例如 `2.3.0-beta.2`）。ClassIsland 清单与程序集使用四段数字版本（此版本为 `2.3.0.2`），前三段与发布版本一致；第四段是同一版本系列内递增的构建号，后续测试版和正式版均递增，不归零。同步维护以下位置：
 
 - `Directory.Build.props` 中的数字版本 `QQListenerVersion` 与发布版本 `QQListenerReleaseVersion`。
 - `manifest.yml` 中的 `version`。
@@ -66,8 +66,8 @@ dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier
 向远端推送与 `QQListenerReleaseVersion` 一致的版本标签即可发布，例如：
 
 ```sh
-git tag 2.3.0-beta.1
-git push origin 2.3.0-beta.1
+git tag 2.3.0-beta.2
+git push origin 2.3.0-beta.2
 ```
 
 Windows 和 macOS 的构建、测试及界面验证全部通过后，发布任务下载同一次运行中已校验的 Windows 安装包，上传 `QQListener.cipx` 和 `checksums.md`。发布说明取自 `CHANGELOG.md` 中对应版本的条目，并附加 ClassIsland 识别所需的 `CLASSISLAND_PKG_MD5` 校验标记。

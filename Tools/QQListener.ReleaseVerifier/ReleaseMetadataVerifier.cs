@@ -16,7 +16,7 @@ namespace QQListener.ReleaseVerifier;
 public static class ReleaseMetadataVerifier
 {
     private const string TargetFramework = "net8.0-windows10.0.19041.0";
-    private const string ExpectedReleaseVersion = "2.3.0.1";
+    private const string ExpectedReleaseVersion = "2.3.0.2";
     private const long MaxManifestBytes = 1024 * 1024;
     private const long MaxCipxBytes = 256L * 1024 * 1024;
     private const long MaxChecksumsBytes = 1024L * 1024;

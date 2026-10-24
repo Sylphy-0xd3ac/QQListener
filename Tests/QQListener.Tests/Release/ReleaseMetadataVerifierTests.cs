@@ -92,10 +92,10 @@ public sealed class ReleaseMetadataVerifierTests
     }
 
     [Theory]
-    [InlineData("2.3.0-beta.1", true)]
-    [InlineData("2.3.0-beta.2", false)]
+    [InlineData("2.3.0-beta.2", true)]
+    [InlineData("2.3.0-beta.3", false)]
     [InlineData("2.3.0", false)]
-    [InlineData("2.3.0.1", false)]
+    [InlineData("2.3.0.2", false)]
     public void ReleaseTagMustMatchDeclaredSemVer(string tag, bool expected)
     {
         using var fixture = ReleaseFixture.Create();
@@ -107,13 +107,13 @@ public sealed class ReleaseMetadataVerifierTests
     [Theory]
     [InlineData("2.3.0-beta.01", "canonical SemVer")]
     [InlineData("2.4.0-beta.1", "core")]
-    [InlineData("2.3.0-beta.2", "informational version")]
-    [InlineData("2.3.0-beta.1\n", "canonical SemVer")]
+    [InlineData("2.3.0-beta.3", "informational version")]
+    [InlineData("2.3.0-beta.2\n", "canonical SemVer")]
     public void ReleaseMetadataRejectsInvalidOrStaleDeclarations(string release, string error)
     {
         using var fixture = ReleaseFixture.Create();
         var props = fixture.File("Directory.Build.props");
-        File.WriteAllText(props, File.ReadAllText(props).Replace("2.3.0-beta.1", release));
+        File.WriteAllText(props, File.ReadAllText(props).Replace("2.3.0-beta.2", release));
         var metadata = ReleaseMetadataVerifier.VerifyMetadata(fixture.Path, "Release", null);
         var package = ReleaseMetadataVerifier.VerifyPackage(fixture.Path, "Release");
         Assert.Contains(metadata.Errors, e => e.Contains(error));
@@ -143,7 +143,7 @@ public sealed class ReleaseMetadataVerifierTests
         using var fixture = ReleaseFixture.Create();
         File.WriteAllText(
             fixture.File("Directory.Build.props"),
-            "<Project><PropertyGroup><QQListenerVersion>1.0.2.0</QQListenerVersion><QQListenerVersion>1.0.2.0</QQListenerVersion><QQListenerReleaseVersion>2.3.0-beta.1</QQListenerReleaseVersion></PropertyGroup></Project>");
+            "<Project><PropertyGroup><QQListenerVersion>1.0.2.0</QQListenerVersion><QQListenerVersion>1.0.2.0</QQListenerVersion><QQListenerReleaseVersion>2.3.0-beta.2</QQListenerReleaseVersion></PropertyGroup></Project>");
 
         var result = ReleaseMetadataVerifier.VerifyMetadata(
             fixture.Path,
@@ -852,7 +852,7 @@ public sealed class ReleaseMetadataVerifierTests
     private static string ManifestWithExactSize(int size)
     {
         const string prefix =
-            "id: QQListener\nversion: 2.3.0.1\nentranceAssembly: QQListener.dll\n#";
+            "id: QQListener\nversion: 2.3.0.2\nentranceAssembly: QQListener.dll\n#";
         Assert.True(prefix.Length <= size);
         return prefix + new string('x', size - prefix.Length);
     }
@@ -970,7 +970,7 @@ public sealed class ReleaseMetadataVerifierTests
             IReadOnlyList<ArchiveItem>? extraEntries = null,
             string? checksumOverride = null,
             bool corruptEmbeddedDll = false,
-            string version = "2.3.0.1",
+            string version = "2.3.0.2",
             string? embeddedDllPath = null)
         {
             var path = System.IO.Path.Combine(
@@ -984,7 +984,7 @@ public sealed class ReleaseMetadataVerifierTests
                 manifest);
             System.IO.File.WriteAllText(
                 System.IO.Path.Combine(path, "Directory.Build.props"),
-                $"<Project><PropertyGroup><QQListenerVersion>{version}</QQListenerVersion><QQListenerReleaseVersion>2.3.0-beta.1</QQListenerReleaseVersion></PropertyGroup></Project>");
+                $"<Project><PropertyGroup><QQListenerVersion>{version}</QQListenerVersion><QQListenerReleaseVersion>2.3.0-beta.2</QQListenerReleaseVersion></PropertyGroup></Project>");
 
             var buildDirectory = System.IO.Path.Combine(
                 path,

@@ -52,7 +52,7 @@ public sealed class DocumentationTests
     }
 
     [Fact]
-    public void MetadataAndCurrentBuildOutputUseVersion230Beta1()
+    public void MetadataAndCurrentBuildOutputUseVersion230Beta2()
     {
         var root = FindProjectRoot();
         var project = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
@@ -63,10 +63,10 @@ public sealed class DocumentationTests
         var manifest = File.ReadAllText(Path.Combine(root, "manifest.yml"));
         var buildOutput = Path.Combine(Path.GetDirectoryName(typeof(Plugin).Assembly.Location)!, "CHANGELOG.md");
 
-        Assert.Equal("2.3.0.1", projectVersion);
-        Assert.Equal("2.3.0-beta.1", project.Descendants().Single(e => e.Name.LocalName == "QQListenerReleaseVersion").Value);
-        Assert.Contains("version: 2.3.0.1", manifest);
-        Assert.Equal(new Version(2, 3, 0, 1), typeof(Plugin).Assembly.GetName().Version);
+        Assert.Equal("2.3.0.2", projectVersion);
+        Assert.Equal("2.3.0-beta.2", project.Descendants().Single(e => e.Name.LocalName == "QQListenerReleaseVersion").Value);
+        Assert.Contains("version: 2.3.0.2", manifest);
+        Assert.Equal(new Version(2, 3, 0, 2), typeof(Plugin).Assembly.GetName().Version);
         Assert.True(File.Exists(buildOutput), $"Expected current build output '{buildOutput}'.");
     }
 

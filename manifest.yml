@@ -8,7 +8,7 @@ name: QQListener
 description: 监听 QQ 收到的消息，并转发为 ClassIsland 提醒。
 entranceAssembly: "QQListener.dll"
 url: https://github.com/Sylphy-0xd3ac/QQListener
-version: 2.3.0.1
+version: 2.3.0.2
 apiVersion: 2.0.0.0
 author: Sylphy-0xd3ac
 repoOwner: Sylphy-0xd3ac
