@@ -75,6 +75,7 @@ internal sealed class MessageNotificationQueue(int capacity = 100, int batchSize
                 ? message.Conversation : message.Sender;
         var identity = Identity(first);
         return identity.Length > 0 && identity == Identity(second)
+            && first.EngineSession == second.EngineSession
             && first.Source == second.Source && first.Scene == second.Scene && first.SourcePid == second.SourcePid;
     }
 }

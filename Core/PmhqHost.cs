@@ -7,7 +7,7 @@ using QQListener.Pipes;
 namespace QQListener.Core;
 
 /// <summary>Loads only the bundled local DLL. No manager launcher or startup credential.</summary>
-public sealed class PmhqHost : IDisposable
+public sealed class PmhqHost : IPmhqHost
 {
     private readonly PmhqBundle _bundle;
     private readonly object _gate = new();

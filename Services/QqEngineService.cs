@@ -11,7 +11,8 @@ namespace QQListener.Services;
 public sealed class QqEngineService(
     QqListenerSettings settings, MessageEventPipeline pipeline, ILessonStateProvider lesson,
     TimeProvider time, EngineCommandRouter commands, Func<CoreService>? createSnowCore = null,
-    Func<IReadOnlyList<int>>? enumeratePids = null) : BackgroundService, IQqNotificationPoller
+    Func<IReadOnlyList<int>>? enumeratePids = null,
+    Func<IPmhqHost>? createPmhqHost = null) : BackgroundService, IQqNotificationPoller
 {
     private readonly EngineSwitchGuard _switch = new();
     private readonly object _gate = new();
@@ -35,7 +36,8 @@ public sealed class QqEngineService(
         public required NativeMessageEnrichment Enrichment;
         public required QqControlApi Api;
         public CoreService? Core;
-        public PmhqHost? Host;
+        public IPmhqHost? Host;
+        public int PmhqPid;
         public readonly CancellationTokenSource Lifetime = new();
         public readonly Dictionary<int, string> Accounts = [];
         public Task? ReceiveTask;
@@ -133,15 +135,21 @@ public sealed class QqEngineService(
         {
             if (session is not null)
             {
-                _switch.RequireRestart(EnumeratePids());
+                _switch.RequireRestart([session.PmhqPid]);
                 StopCurrent();
             }
             CoreRuntime.Set(CoreRuntimeState.Detached, "PMHQ 已停止连接；QQ 内的钩子需要重启 QQ 清理");
             return;
         }
-        if (session?.RequiresRestart == true || session?.Host?.HasExited == true)
+        if (session?.Host?.HasExited == true)
         {
-            _switch.RequireRestart(EnumeratePids());
+            // Its hooks died with the old process. A visible replacement has no old hooks.
+            StopCurrent();
+            session = null;
+        }
+        else if (session?.RequiresRestart == true)
+        {
+            _switch.RequireRestart([session.PmhqPid]);
             StopCurrent();
             session = null;
         }
@@ -168,7 +176,9 @@ public sealed class QqEngineService(
         {
             try
             {
-                session.Host = new PmhqHost(new PmhqBundle(KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory)));
+                session.PmhqPid = pids[0];
+                session.Host = createPmhqHost?.Invoke()
+                    ?? new PmhqHost(new PmhqBundle(KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory)));
                 session.Host.Start(pids[0]);
                 session.ReceiveTask = RunPmhqAsync(session);
             }
@@ -309,9 +319,7 @@ public sealed class QqEngineService(
         var result = await session.Source.PollAsync(retryPermission, cancellationToken);
         return ReferenceEquals(session, Volatile.Read(ref _current)) ? result with
         {
-            AcceptedEvents = result.AcceptedEvents.Where(message => message.IsPendingDigest
-                ? message.PendingMessages.All(item => commands.IsCurrent(item.EngineSession))
-                : commands.IsCurrent(message.EngineSession)).ToArray()
+            AcceptedEvents = result.AcceptedEvents.Where(commands.IsCurrent).ToArray()
         }
             : new(WindowsNotificationReadStatus.Success, [], "引擎已切换");
     }

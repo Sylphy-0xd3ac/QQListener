@@ -60,7 +60,7 @@ DLL 中独立存在签名 RPC：初始化函数 `0x126e6` 在 `dump_sign` 标志
 
 ## 验证
 
-- Release 全量测试：635 项通过，0 失败、0 跳过（协议/生命周期 373，模型/服务 262）。
-- 新回归分别证明修复前失败、修复后通过；测试记录前缀为 `pmhq-sign-reviewed`。
+- 初次签名审查的 Release 全量测试为 635 项通过，记录前缀 `pmhq-sign-reviewed`。通知会话与替代进程重连修复后为 641 项通过，0 失败、0 跳过（协议/生命周期 376，模型/服务 265），记录前缀 `session-review-fixes`。
+- 签名审查中的缺陷回归分别证明修复前失败、修复后通过；后续会话修复见[双引擎审查](dual-engine.md)。
 - 原生初始化、anchor 和命令失败路径的既有隔离证据见 [pmhq-local-runtime.json](evidence/pmhq-local-runtime.json)。本次未把隔离结果扩展为真实 QQ 签名结论。
 - 审查输入哈希和原生地址见 [静态证据索引](evidence/pmhq-signing-static.json)。更广范围的改动见 [双引擎审查](dual-engine.md)。

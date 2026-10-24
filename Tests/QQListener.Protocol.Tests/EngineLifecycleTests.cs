@@ -3,11 +3,83 @@ using QQListener.Core;
 using QQListener.Models;
 using QQListener.Native;
 using QQListener.Services;
+using QQListener.Protocol;
+using System.Collections.Concurrent;
 
 namespace QQListener.Protocol.Tests;
 
 public sealed class EngineLifecycleTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReplacementQqIsNotBlockedByTheOldPmhqSession(bool accountChanged)
+    {
+        CoreController.ResetToDefault();
+        IReadOnlyList<int> pids = new[] { 11 };
+        var hosts = new ConcurrentQueue<FakeHost>();
+        var settings = new QqListenerSettings { Engine = ListenerEngine.PMHQ };
+        var pipeline = new MessageEventPipeline(settings, new MessageRuleEvaluator(settings),
+            new QqListenerDiagnosticsState(), NullLogger<MessageEventPipeline>.Instance, TimeProvider.System);
+        using var runtime = new QqEngineService(settings, pipeline, new AlwaysOffClassProvider(), TimeProvider.System,
+            new EngineCommandRouter(), enumeratePids: () => Volatile.Read(ref pids), createPmhqHost: () =>
+            {
+                var host = new FakeHost();
+                hosts.Enqueue(host);
+                return host;
+            });
+        try
+        {
+            await runtime.StartAsync(default);
+            await WaitUntil(() => hosts.TryPeek(out var host) && host.Pid == 11);
+            var old = hosts.Single();
+            if (accountChanged)
+            {
+                // Both processes are visible when the old account becomes invalid.
+                Volatile.Write(ref pids, new[] { 11, 22 });
+                old.AccountChanged = true;
+                await WaitUntil(() => old.Disposed);
+                await Task.Delay(650);
+                Assert.Single(hosts);
+            }
+            old.Exited = true;
+            Volatile.Write(ref pids, new[] { 22 });
+            await WaitUntil(() => hosts.Any(host => host.Pid == 22));
+            Assert.Equal(2, hosts.Count);
+            Assert.Equal(new[] { 11, 22 }, hosts.Select(host => host.Pid));
+            Assert.True(old.Disposed);
+        }
+        finally
+        {
+            await runtime.StopAsync(default);
+            CoreController.ResetToDefault();
+            CoreRuntime.ResetToDefault();
+        }
+    }
+
+    private sealed class FakeHost : IPmhqHost, IPmhqClient
+    {
+        public volatile int Pid;
+        public volatile bool Exited;
+        public volatile bool AccountChanged;
+        public volatile bool Disposed;
+        public IPmhqClient Client => this;
+        public bool HasExited => Exited;
+        public bool NativeInitialized => true;
+        public bool IsConnected => !Disposed;
+        public void Start(int qqPid) => Pid = qqPid;
+        public Task<PmhqHealth> GetHealthAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            if (AccountChanged) throw new PmhqAccountChangedException();
+            return Task.FromResult(new PmhqHealth(Pid, "10000", "") { IsLocalPipe = true });
+        }
+        public Task ReceiveAsync(Action<CapturedMessage> receive, Action<PmhqHealth> onHealth, CancellationToken token)
+            => Task.Delay(Timeout.Infinite, token);
+        public byte[] Send(int pid, string command, byte[] body) => [];
+        public void Dispose() => Disposed = true;
+    }
+
     [Fact]
     public async Task SwitchingBackStillWaitsForTheOldHookProcessToExit()
     {

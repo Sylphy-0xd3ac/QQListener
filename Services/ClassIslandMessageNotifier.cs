@@ -33,11 +33,13 @@ public class ClassIslandMessageNotifier : IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!IsCurrent(messageEvent)) return;
 
         void DoShow()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
+            if (!IsCurrent(messageEvent)) return;
             _queue.Enqueue(new QueuedMessageNotification(messageEvent, showNotification, cancellationToken));
             ShowNext();
             _activeWindow?.UpdateQueuedCount(_queue.MessageCount);
@@ -94,10 +96,17 @@ public class ClassIslandMessageNotifier : IDisposable
         if (_disposed || _activeWindow is not null) return;
         while (_queue.TakeNext() is { } item)
         {
+            if (!IsCurrent(item.Message)) continue;
             var request = BuildRequest(item.Message);
             try
             {
                 item.ShowNotification(request);
+                // A host callback can synchronously change the engine/account before a window exists.
+                if (!IsCurrent(item.Message))
+                {
+                    request.Cancel();
+                    continue;
+                }
                 if (request.CancellationToken.IsCancellationRequested || request.CompletedToken.IsCancellationRequested
                     || request.State == ClassIsland.Core.Enums.Notification.NotificationState.None)
                     continue;
@@ -121,6 +130,8 @@ public class ClassIslandMessageNotifier : IDisposable
             }
         }
     }
+
+    private bool IsCurrent(MessageEvent message) => _engines?.IsCurrent(message) ?? true;
 
     public async Task CancelAllAsync()
     {

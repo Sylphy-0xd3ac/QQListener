@@ -1,4 +1,5 @@
 using QQListener.Oidb;
+using QQListener.Models;
 
 namespace QQListener.Core;
 
@@ -49,5 +50,15 @@ public sealed class EngineCommandRouter
     public bool IsCurrent(Guid session)
     {
         lock (_gate) return session != Guid.Empty && session == _session && _api is not null;
+    }
+
+    /// <summary>Digest wrappers have no session; every member must belong to the current session.</summary>
+    public bool IsCurrent(MessageEvent message)
+    {
+        lock (_gate) return Matches(message);
+
+        bool Matches(MessageEvent item) => item.IsPendingDigest
+            ? item.PendingMessages.All(Matches)
+            : item.EngineSession != Guid.Empty && item.EngineSession == _session && _api is not null;
     }
 }

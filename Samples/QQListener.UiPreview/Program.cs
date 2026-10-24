@@ -27,7 +27,8 @@ internal static class Program
     {
         var native = args.Length > 0 && args[0] == "--native-check";
         var automation = args.Contains("--automation-check");
-        var render = native || automation || args.Length > 0 && args[0] == "--render";
+        var sessionCheck = args.Contains("--session-check");
+        var render = native || automation || sessionCheck || args.Length > 0 && args[0] == "--render";
         var app = AppBuilder.Configure<PreviewApplication>();
         if (!render) return app.UsePlatformDetect().StartWithClassicDesktopLifetime(args);
 
@@ -68,6 +69,11 @@ internal static class Program
             return 0;
         }
         app.UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        if (sessionCheck)
+        {
+            VerifyNotificationSessions();
+            return 0;
+        }
         VerifyAutomationCompatibility();
         if (automation) return 0;
 
@@ -112,6 +118,7 @@ internal static class Program
         VerifyNotificationCancellation();
         VerifyHostNotificationTiming();
         VerifyNotificationQueue();
+        VerifyNotificationSessions();
         VerifyScaledIslandAnchor();
         VerifyReplyActions(directory);
         VerifyReactionActions();
@@ -641,6 +648,85 @@ internal static class Program
         if (!requests[2].CancellationToken.IsCancellationRequested || requests.Count != 3)
             throw new InvalidOperationException("暂停监听时必须收起当前提醒并清除旧等待队列");
         Console.WriteLine("Notification queue: no eviction / important first / continue after cancellation / clear on pause OK");
+    }
+
+    private static void VerifyNotificationSessions()
+    {
+        var router = new Core.EngineCommandRouter();
+        var api = Oidb.QqControlApi.OverRequests((_, _, _) => []);
+        var firstSession = Guid.NewGuid();
+        var secondSession = Guid.NewGuid();
+        router.Bind(firstSession, api);
+        using var notifier = new ClassIslandMessageNotifier(new QqListenerSettings { PerformanceMode = true }, engines: router);
+        var calls = 0;
+        void Show(ClassIsland.Core.Models.Notification.NotificationRequest request)
+        {
+            calls++;
+            request.Cancel();
+        }
+        var old = MessagePreviewSamples.Create(MessagePreviewKind.Text, MessageImportance.Normal)
+            with { EngineSession = firstSession };
+        notifier.ShowAsync(old, Show, default).GetAwaiter().GetResult();
+        if (calls != 1) throw new InvalidOperationException("当前会话消息应正常提交宿主");
+
+        // A poll result is already in the worker when the engine/account changes.
+        router.Bind(secondSession, api);
+        notifier.ShowAsync(old, Show, default).GetAwaiter().GetResult();
+        notifier.ShowAsync(PendingMessageDigest.Create([old, old])!, Show, default).GetAwaiter().GetResult();
+        var current = old with { EngineSession = secondSession };
+        notifier.ShowAsync(PendingMessageDigest.Create([current, old])!, Show, default).GetAwaiter().GetResult();
+        if (calls != 1) throw new InvalidOperationException("旧批次、旧摘要和混合会话摘要不得显示或朗读");
+        notifier.ShowAsync(PendingMessageDigest.Create([current, current])!, Show, default).GetAwaiter().GetResult();
+        if (calls != 2) throw new InvalidOperationException("当前会话摘要应正常提交宿主");
+
+        // ShowAsync started on a worker, but its UI continuation has not run yet.
+        var posted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayed = Task.Run(async () =>
+        {
+            var show = notifier.ShowAsync(current, Show, default);
+            posted.SetResult();
+            await show;
+        });
+        posted.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        router.Bind(Guid.NewGuid(), api);
+        Pump(TimeSpan.FromMilliseconds(150));
+        delayed.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        if (calls != 2) throw new InvalidOperationException("等待 UI 调度期间失效的消息不得显示");
+
+        // A synchronous host callback may itself change the session.
+        var reentrant = old with { EngineSession = Guid.NewGuid() };
+        router.Bind(reentrant.EngineSession, api);
+        ClassIsland.Core.Models.Notification.NotificationRequest? last = null;
+        notifier.ShowAsync(reentrant, request =>
+        {
+            last = request;
+            SetHostState(request, ClassIsland.Core.Enums.Notification.NotificationState.Queued);
+            router.Bind(Guid.Empty, null);
+        }, default).GetAwaiter().GetResult();
+        if (last?.CancellationToken.IsCancellationRequested != true)
+            throw new InvalidOperationException("宿主回调内切换会话必须取消旧通知，不得再创建浮窗");
+
+        // Let an active window close before the notifier's session-clear callback runs.
+        var queuedRouter = new Core.EngineCommandRouter();
+        queuedRouter.Bind(firstSession, api);
+        var requests = new List<ClassIsland.Core.Models.Notification.NotificationRequest>();
+        queuedRouter.SessionChanged += () =>
+        {
+            requests[0].Cancel();
+            Pump(TimeSpan.FromMilliseconds(250));
+        };
+        using var queuedNotifier = new ClassIslandMessageNotifier(new QqListenerSettings { PerformanceMode = true }, engines: queuedRouter);
+        void Queue(ClassIsland.Core.Models.Notification.NotificationRequest request)
+        {
+            requests.Add(request);
+            SetHostState(request, ClassIsland.Core.Enums.Notification.NotificationState.Queued);
+        }
+        queuedNotifier.ShowAsync(old, Queue, default).GetAwaiter().GetResult();
+        queuedNotifier.ShowAsync(PendingMessageDigest.Create([old, old])!, Queue, default).GetAwaiter().GetResult();
+        queuedRouter.Bind(secondSession, api);
+        if (requests.Count != 1)
+            throw new InvalidOperationException("实际出队时必须重新检查会话，旧摘要不得提交宿主");
+        Console.WriteLine("Notification session: current / stale batch / mixed digest / UI dispatch / dequeue / reentrant switch OK");
     }
 
     private sealed class FileHandler : HttpMessageHandler

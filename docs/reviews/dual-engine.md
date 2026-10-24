@@ -52,6 +52,8 @@ LLBot 会为历史同步发送额外 InfoSync，本插件只提醒新消息，�
 | 高 | 本机管道核对当前用户及客户端 QQ PID；发包前重读 native UIN 缓存，观察到变化时拒绝旧账号回复 | 错误 PID、换号和退出替身测试；原生缓存刷新时机及真实 Windows PID API 待验收 |
 | 高 | 请求在排队前绑定管道，禁止断线前请求发往新连接；旧连接清理不能清除新连接状态 | 真实命名管道阻塞写、断线重连和迟到续体回归，修复前复现失败 |
 | 高 | 空发送回包拒绝成功；群回复要求群序号，私聊序号不能代替群回执 | MessageSenderTests 三个修复前失败用例及错误 wire type 测试；对照 SnowLuma 群/私聊规则 |
+| 中 | 引擎/账号变化后，已取出的批次仍可能排入旧通知；入队、UI 调度后、实际出队以及宿主回调返回后重查会话，摘要递归检查全部成员 | ClassIslandMessageNotifierTests、路由摘要测试；UI preview 的 `--session-check` 覆盖延迟调度、出队与回调重入，旧实现探针失败 |
+| 中 | PMHQ 旧宿主退出时不再把可见替代进程标为需重启；账号失效及停止连接只限制旧宿主 PID | EngineLifecycleTests 覆盖旧宿主退出、新旧进程同时可见时账号失效，再退出旧进程；两个用例修复前均阻塞 |
 | 中 | 接收回调 enrichment 可能同步发包，若与读回包共用一个循环会死锁；改为独立、有界的投递通道 | PmhqLocalClientTests 的真实命名管道请求/回包交叉用例 |
 | 中 | control 请求连接单独限时 3 秒，连接后的读、异步写和 flush 共用截止时间；本机发送部分失败即断开管道，防止 JSON 帧串接 | NamedPipeDeadlineTests；本机客户端源码检查 |
 | 中 | 关闭监听时不 enrichment/积压，捕获与投递队列有界 | source/queue/disabled 测试 |
@@ -60,7 +62,7 @@ LLBot 会为历史同步发送额外 InfoSync，本插件只提醒新消息，�
 
 ## 验证结果
 
-- Release 解决方案测试：635 通过，0 失败、0 跳过，其中协议/生命周期 373，模型/服务 262。
+- Release 解决方案测试：641 通过，0 失败、0 跳过，其中协议/生命周期 376，模型/服务 265。
 - Windows 目标的全部工程锁定依赖交叉编译通过，0 警告、0 错误。DLL 从仓库源码重建后与内置文件逐字节一致。
 - 新本机管道测试覆盖原生 response 结构、无凭证命令、数字 id、失败不泄露、UTF-8/JSON 分片、enrichment 发包不死锁、连接 PID、换号和退出前置检查。
 - PMHQ → ClassIsland 集成使用两条合成 protobuf push，经 decoder、规则、暂停摘要到通知请求，核对等级、时长和 session；不是真实宿主运行结果。

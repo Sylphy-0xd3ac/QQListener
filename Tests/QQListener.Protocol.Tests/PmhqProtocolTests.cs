@@ -64,6 +64,28 @@ public sealed class PmhqProtocolTests
     }
 
     [Fact]
+    public void NotificationSessionValidationIncludesEveryNestedDigestMember()
+    {
+        var router = new EngineCommandRouter();
+        var session = Guid.NewGuid();
+        var api = QqControlApi.OverRequests((_, _, _) => []);
+        router.Bind(session, api);
+        var current = new MessageEvent("qq", "QQ", "Alice", "", "hello", DateTimeOffset.Now,
+            MessageImportance.Normal, [], "test") { EngineSession = session };
+        var stale = current with { EngineSession = Guid.NewGuid() };
+        var good = PendingMessageDigest.Create([current, current])!;
+        var mixed = PendingMessageDigest.Create([current, stale])!;
+        Assert.True(router.IsCurrent(good));
+        Assert.False(router.IsCurrent(current with { EngineSession = Guid.Empty }));
+        Assert.False(router.IsCurrent(PendingMessageDigest.Create([current, mixed])!));
+        router.Bind(Guid.NewGuid(), api);
+        Assert.False(router.IsCurrent(current));
+        Assert.False(router.IsCurrent(good));
+        router.Bind(session, null);
+        Assert.False(router.IsCurrent(current));
+    }
+
+    [Fact]
     public void FailingUiObserverDoesNotLeaveANewEngineHalfStarted()
     {
         var router = new EngineCommandRouter();

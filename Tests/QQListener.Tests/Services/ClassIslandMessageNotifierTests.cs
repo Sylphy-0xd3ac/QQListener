@@ -1,11 +1,39 @@
 using QQListener.Models;
 using QQListener.Services;
 using Xunit;
+using QQListener.Core;
+using QQListener.Oidb;
 
 namespace QQListener.Tests.Services;
 
 public class ClassIslandMessageNotifierTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task OldPollResultsCannotShowAfterTheSessionChanges(int kind)
+    {
+        var router = new EngineCommandRouter();
+        var session = Guid.NewGuid();
+        var api = QqControlApi.OverRequests((_, _, _) => []);
+        router.Bind(session, api);
+        using var notifier = new ClassIslandMessageNotifier(new QqListenerSettings(), engines: router);
+        var old = new MessageEvent("qq", "QQ", "Alice", "", "old", DateTimeOffset.Now,
+            MessageImportance.Normal, [], "test") { EngineSession = session };
+        var next = Guid.NewGuid();
+        router.Bind(next, api);
+        var message = kind switch
+        {
+            1 => PendingMessageDigest.Create([old, old])!,
+            2 => PendingMessageDigest.Create([old with { EngineSession = next }, old])!,
+            _ => old
+        };
+        var callbacks = 0;
+        await notifier.ShowAsync(message, _ => callbacks++, default);
+        Assert.Equal(0, callbacks);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
