@@ -1,6 +1,6 @@
 # QQListener
 
-ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消息，也可在调试区选择内置的 PMHQ 实验引擎。
+ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消息，也可在调试区选择按需下载的 PMHQ 实验引擎。
 
 [下载](https://github.com/Sylphy-0xd3ac/QQListener/releases) · [更新日志](https://github.com/Sylphy-0xd3ac/QQListener/blob/main/CHANGELOG.md) · [问题反馈](https://github.com/Sylphy-0xd3ac/QQListener/issues)
 
@@ -19,9 +19,11 @@ ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消�
 
 在设置底部「调试 → 消息引擎」选择 PMHQ。确认实验性提示后，退出并重启 QQ；旧 QQ 进程退出前，插件会等待，不会同时装载两套钩子。切回 SnowLuma 同样需要重启 QQ。
 
-PMHQ v9.0.6 本机内核已内置，无需填写 `auth_token`，也不需要 manager、独立启动器或本机 HTTP 服务。插件直接装载 DLL，通过当前用户的命名管道与所选 QQ 通信。初始化在本机完成，发包由 QQ 自身处理。
+首次使用时从官方固定下载 PMHQ v9.0.6 Windows x64 包（约 14 MB），依次校验下载包和原始 DLL，应用内置差分补丁后再校验结果。插件不再携带完整 PMHQ DLL，也不会解压或启动原 EXE。下载使用设置中的 GitHub 加速代理；失败可点击「重新检查」重试。已安装且校验通过的 DLL 可离线使用，缓存的原版 DLL 可用于修复损坏文件。
 
-选择 PMHQ 并重启 QQ 后会自动连接；可点击「重新检查」重试。「打开 PMHQ 内核目录」用于查看解压文件。旧版的 `pmhq_config.json` 不再读取；更新内核不删除用户原有配置文件。此功能尚未完成原生 Windows、真实 QQ 注入及发包验收。
+无需填写 `auth_token`，也不需要 manager、独立启动器或本机 HTTP 服务。插件直接装载 DLL，通过当前用户的命名管道与所选 QQ 通信。初始化在本机完成，发包由 QQ 自身处理。
+
+选择 PMHQ 并重启 QQ 后会自动连接；可点击「重新检查」重试。「打开 PMHQ 内核目录」用于查看已安装文件，不触发下载。旧版的 `pmhq_config.json` 不再读取；更新内核不删除用户原有配置文件。此功能尚未完成原生 Windows、真实 QQ 注入及发包验收。
 
 该模式只连接一个 QQ 主进程，不接管外部 PMHQ，也不与 LLBot 已启动的 PMHQ 共用实例。停止连接会关闭管道，原生钩子保留至 QQ 退出，不会结束 QQ。QQ 退出登录或切换账号后，需要重启 QQ 重新建立会话。
 

@@ -30,7 +30,7 @@ public partial class KernelSetupViewModel : ObservableObject
 
     /// <summary>内核卡片第三行：装了什么版本、现在是什么状态，一句话说完。</summary>
     public string KernelVersionLine => _settings.Engine == ListenerEngine.PMHQ
-        ? $"PMHQ {PmhqBundle.Version}（内置 · 实验性） · {ControlStateText}"
+        ? $"PMHQ {PmhqBundle.Version}（按需下载 · 实验性） · {ControlStateText}"
         : !IsSupported
         ? "原生捕获仅在 Windows x64 上可用"
         : IsInstalled

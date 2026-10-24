@@ -1,14 +1,18 @@
 {
   "date": "2026-10-24",
   "scope": "PMHQ v9.0.6 Windows x64 direct DLL runtime; selected native paths and managed integration",
-  "tools": ["Ghidra 11.3.2", "Capstone"],
+  "tools": [
+    "Ghidra 11.3.2",
+    "Capstone"
+  ],
   "sha256": {
-    "Assets/PMHQ/win-x64/pmhq.dll": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
     "upstream-original-pmhq.dll": "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4",
     "Core/PmhqLocalClient.cs": "02b6ba40b0ea79032c62518e857b1de7b480bd3f050e781a397fec422f516896",
-    "Core/PmhqHost.cs": "6d255a4978f7e62809435a0a19c4a80d7de314c627db292f2334cee55a4ac78c",
+    "Core/PmhqHost.cs": "88d503c0111eb329811f3f014335bd622b1c5320923b12dd47c67951c5d92972",
     "Oidb/MessageSender.cs": "92dcad413e17584b69f2927feb4997a8ebe3624d8de32b6f1eba5a25a4f1cc30",
-    "Oidb/QqControlApi.cs": "bd19422e13ae8bb06459c4d3db3ee9358af85ef32bcfb26ab121652ed8577c1e"
+    "Oidb/QqControlApi.cs": "bd19422e13ae8bb06459c4d3db3ee9358af85ef32bcfb26ab121652ed8577c1e",
+    "reconstructed-pmhq.dll": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
+    "Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch": "6eea307e7f5495093bff6ab920de12afd627d287581b662f99d497ea5a522995"
   },
   "upstream_commits": {
     "SnowLuma/SnowLuma": "f8cb15c27bca3d2d1bd044a921e55bfc44bb5e60",
@@ -45,5 +49,6 @@
     "Native isolated probe replaces a fixture output-queue callback and disables QQ hooks; it is not an end-to-end QQ or complete native writer test.",
     "Managed account tests substitute the account source; native cache refresh timing is not established.",
     "This is not a full audit of the closed-source PMHQ DLL."
-  ]
+  ],
+  "distribution_note": "The runtime DLL is unchanged; it is now reconstructed from the pinned upstream DLL using the embedded delta. Regression test totals below are the earlier native integration review."
 }

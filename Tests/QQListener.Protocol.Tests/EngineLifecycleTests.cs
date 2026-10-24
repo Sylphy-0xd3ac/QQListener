@@ -10,6 +10,50 @@ namespace QQListener.Protocol.Tests;
 
 public sealed class EngineLifecycleTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LateDownloadCannotStartAnOldSession(bool switchEngine)
+    {
+        CoreController.ResetToDefault();
+        IReadOnlyList<int> pids = new[] { 11 };
+        // An actual host reports HasExited before it has attached to QQ.
+        var old = new FakeHost { HoldPreparation = true, Exited = true };
+        var replacement = new FakeHost();
+        var hosts = new Queue<FakeHost>([old, replacement]);
+        var settings = new QqListenerSettings { Engine = ListenerEngine.PMHQ };
+        var pipeline = new MessageEventPipeline(settings, new MessageRuleEvaluator(settings),
+            new QqListenerDiagnosticsState(), NullLogger<MessageEventPipeline>.Instance, TimeProvider.System);
+        using var runtime = new QqEngineService(settings, pipeline, new AlwaysOffClassProvider(), TimeProvider.System,
+            new EngineCommandRouter(), enumeratePids: () => Volatile.Read(ref pids), createPmhqHost: () => hosts.Dequeue());
+        try
+        {
+            await runtime.StartAsync(default);
+            await old.PreparationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var session = typeof(QqEngineService).GetField("_current",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(runtime)!;
+            var startup = (Task)session.GetType().GetField("ReceiveTask")!.GetValue(session)!;
+            await Task.Delay(650);
+            Assert.False(old.Disposed);
+            if (switchEngine) settings.Engine = ListenerEngine.SnowLuma;
+            else Volatile.Write(ref pids, new[] { 22 });
+            await WaitUntil(() => old.Disposed);
+            if (!switchEngine) await WaitUntil(() => CoreRuntime.Get() is { State: CoreRuntimeState.Connected, Pid: 22 });
+            // Even a preparation operation that ignores cancellation cannot inject after switching.
+            old.ReleasePreparation.TrySetResult();
+            await startup.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(0, old.Pid);
+            if (!switchEngine) Assert.Equal(22, CoreRuntime.Get().Pid);
+        }
+        finally
+        {
+            old.ReleasePreparation.TrySetResult();
+            await runtime.StopAsync(default);
+            CoreController.ResetToDefault();
+            CoreRuntime.ResetToDefault();
+        }
+    }
+
     [Fact]
     public async Task LateAccountFailureCannotUnbindTheReplacementSession()
     {
@@ -109,12 +153,20 @@ public sealed class EngineLifecycleTests
         public volatile bool AccountChanged;
         public volatile bool Disposed;
         public bool HoldReceiveCleanup;
+        public bool HoldPreparation;
+        public readonly TaskCompletionSource PreparationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource ReleasePreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource CleanupStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource ReleaseCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IPmhqClient Client => this;
         public bool HasExited => Exited;
         public bool NativeInitialized => true;
         public bool IsConnected => !Disposed;
+        public async Task PrepareAsync(string? proxy, CancellationToken ct)
+        {
+            PreparationStarted.TrySetResult();
+            if (HoldPreparation) await ReleasePreparation.Task;
+        }
         public void Start(int qqPid) => Pid = qqPid;
         public Task<PmhqHealth> GetHealthAsync(CancellationToken token)
         {

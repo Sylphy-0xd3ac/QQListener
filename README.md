@@ -16,7 +16,7 @@
 - 按优先级依次提醒，同一会话的短时连续消息可合并显示。
 - 可选引用群消息回复预设文本，或为群消息添加 QQ 的 OK 表情回应。
 - 提供语音、提示音、工作流触发器与动作，以及“最后 QQ 消息”组件。
-- 在底部「调试 → 消息引擎」选择 SnowLuma 或内置的 PMHQ 实验引擎。
+- 在底部「调试 → 消息引擎」选择 SnowLuma 或按需下载的 PMHQ 实验引擎。
 
 ## 安装
 
@@ -28,7 +28,7 @@
 
 SnowLuma 内核不随插件分发，首次使用需单独下载并接受其许可。插件设置、回复方式及常见问题见[使用说明](docs/usage.md)。
 
-PMHQ 为实验性选项，直接使用本机 QQ，无需 `auth_token` 或 manager 启动配置。切换时会显示提示，并等待原 QQ 进程退出后再连接。真实 QQ 注入、签名及发包尚未完成 Windows 验收，使用方法见[说明](docs/usage.md#pmhq-实验引擎)。
+PMHQ 为实验性选项。首次使用从官方获取固定的 v9.0.6，校验后应用随插件提供的补丁；后续可离线复用。直接使用本机 QQ，无需 `auth_token` 或 manager 启动配置。切换时会显示提示，并等待原 QQ 进程退出后再连接。真实 QQ 注入、签名及发包尚未完成 Windows 验收，使用方法见[说明](docs/usage.md#pmhq-实验引擎)。
 
 ## 开发
 
@@ -59,4 +59,4 @@ dotnet test QQListener.sln -c Release --no-build --no-restore
 - [ClassIsland](https://github.com/ClassIsland/ClassIsland)：提醒、组件和自动化支持。
 
 QQListener 源代码采用 MIT 许可证，见 [LICENSE](LICENSE)。SnowLuma 采用其自身许可，不属于本项目 MIT 许可的授权范围。
-内置 PMHQ 二进制及原始代码同样采用其自身许可；版本和修改说明见 [NOTICE](Assets/PMHQ/NOTICE.md)。
+PMHQ 原始二进制从官方获取，不随插件分发，采用其自身许可；版本和修改说明见 [NOTICE](Assets/PMHQ/NOTICE.md)。

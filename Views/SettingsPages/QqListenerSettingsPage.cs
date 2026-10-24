@@ -32,7 +32,7 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
     public IReadOnlyList<string> EngineNames { get; } = ["SnowLuma", "PMHQ（实验性）"];
     public bool IsPmhqSelected => _settings.Engine == ListenerEngine.PMHQ;
     public string EngineDescription => IsPmhqSelected
-        ? "PMHQ 为内置本机引擎，无需启动凭证；尚未验证真实 QQ 发包。切换引擎后需要重启 QQ。"
+        ? "PMHQ 首次使用时下载固定版本并应用内置补丁，无需启动凭证；尚未验证真实 QQ 发包。切换后需要重启 QQ。"
         : "SnowLuma 为默认引擎。切换引擎后需要重启 QQ，避免同时装载不同钩子。";
 
     public int SelectedEngineIndex
@@ -153,7 +153,7 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
             {
                 Title = engine == ListenerEngine.PMHQ ? "PMHQ 是实验性功能" : "切换为 SnowLuma",
                 Content = engine == ListenerEngine.PMHQ
-                    ? "PMHQ 使用本机 QQ，无需 auth_token 或 manager。真实 QQ 注入、签名和发包尚未验证，可能无法接收消息或导致 QQ 异常。切换后请退出并重启 QQ。"
+                    ? "首次使用将从 PMHQ 官方下载 v9.0.6（约 14 MB），并应用内置补丁；可使用已配置的下载代理。无需 auth_token 或 manager。真实 QQ 注入、签名和发包尚未验证，可能无法接收消息或导致 QQ 异常。切换后请退出并重启 QQ。"
                     : "切换后请退出并重启 QQ。旧进程退出前，插件会等待，不会向同一个 QQ 进程装载另一套钩子。",
                 PrimaryButtonText = "切换",
                 CloseButtonText = "取消"
@@ -164,12 +164,12 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
         finally { _changingEngine = false; RefreshEngineSelection(); }
     }
 
-    private async void OnOpenPmhqConfigurationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void OnOpenPmhqConfigurationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         try
         {
             var bundle = new PmhqBundle(KernelLocator.ResolveNativeDirectory(_settings.SettingsDirectory));
-            await Task.Run(bundle.Prepare);
+            Directory.CreateDirectory(bundle.BinaryDirectory);
             Process.Start(new ProcessStartInfo(bundle.BinaryDirectory) { UseShellExecute = true });
         }
         catch (Exception ex) { _diagnostics.RecordError(ex, "打开 PMHQ 内核目录失败"); }

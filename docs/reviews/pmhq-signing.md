@@ -1,12 +1,12 @@
 # PMHQ 发包与签名路径审查
 
-审查日期：2026-10-24。对象为内置 PMHQ v9.0.6 Windows x64 DLL、本地初始化包装、托管管道客户端和共同消息发送接口。
+审查日期：2026-10-24。对象为补丁重建的 PMHQ v9.0.6 Windows x64 DLL、本地初始化包装、托管管道客户端和共同消息发送接口。
 
 当前实现没有调用 `pmhq_sign` 签名管道。已确认的链路是 `pmhq_cmd_<QQ PID>` → DLL `active_send` → 捕获的 QQ `sendSso` 函数指针。静态分析可以追到 QQ 进程内发包入口，不能据此确认 QQ 最终调用了哪个签名函数、服务端接受了签名或消息已经投递。PMHQ 保持实验性。
 
 ## 输入及对照
 
-- PMHQ：上游 v9.0.6；原 DLL SHA-256 为 `345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4`，内置修改 DLL 为 `2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b`。使用 Ghidra 11.3.2 和 Capstone 分析原有函数；以下地址均为 RVA。
+- PMHQ：上游 v9.0.6；原 DLL SHA-256 为 `345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4`，补丁重建 DLL 为 `2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b`。使用 Ghidra 11.3.2 和 Capstone 分析原有函数；以下地址均为 RVA。
 - [SnowLuma 消息发送](https://github.com/SnowLuma/SnowLuma/blob/f8cb15c27bca3d2d1bd044a921e55bfc44bb5e60/packages/core/src/bridge/apis/message.ts)：群消息要求正数 `groupSequence`；私聊只检查非零 result，不强制正数私聊序号。
 - [SnowLuma 管道客户端](https://github.com/SnowLuma/SnowLuma/blob/f8cb15c27bca3d2d1bd044a921e55bfc44bb5e60/packages/bridge/src/hook-packet-client.ts)：通过本地控制通道发送 command/body 并检查回包错误。其原生发送器也使用捕获的进程内发送入口；这一点不能代替真实 QQ 签名验收。
 - [LLBot PMHQ 客户端](https://github.com/LLOneBot/LuckyLilliaBot/blob/dc2b2b90092ef0f571b5546878288b83fff1e436/src/main/qqProtocol/pmhq.ts)：走启动器 HTTP/WS，echo 只用于关联、code 用于判断成功。可以对照包裹和错误语义，不能将它等同于当前直接 DLL 的传输实现。
@@ -60,7 +60,7 @@ DLL 中独立存在签名 RPC：初始化函数 `0x126e6` 在 `dump_sign` 标志
 
 1. **账号检查读取的是缓存。** `PmhqHost.CurrentAccount` 读取 `0xf31d8` 的 `LazyLock<Mutex<String>>`。发送 detour `0x21244` 更新该记录，序列化函数 `0x2450b` 读取它；这不是登录/退出状态查询。托管端会拒绝已观察到的 UIN 变化，但在原生缓存尚未刷新时，不能保证立即识别退出或换号。账号替身测试不证明真实刷新时机；退出登录、换号仍须重启 QQ。
 2. **没有完整的真实 Windows QQ 端到端结果。** 隔离 probe 使用 `PMHQ_SRDI_TEST` 禁用 QQ 钩子，并替换短命 fixture 中的输出队列回调；它证明命令读取、解析及失败序列化，未证明完整事件写出、真实签名或消息投递。
-3. **闭源主体和固定地址。** 此次审查覆盖新增代码及上述反编译路径，无法对 PMHQ 全部闭源代码作“没有问题”的保证。地址和原生对象布局绑定内置 SHA-256，升级必须重新核对。
+3. **闭源主体和固定地址。** 此次审查覆盖新增代码及上述反编译路径，无法对 PMHQ 全部闭源代码作“没有问题”的保证。地址和原生对象布局绑定固定 SHA-256，升级必须重新核对。
 
 ## 验证
 

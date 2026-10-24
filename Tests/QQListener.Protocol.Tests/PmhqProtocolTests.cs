@@ -129,25 +129,16 @@ public sealed class PmhqProtocolTests
     }
 
     [Fact]
-    public void BundleExtractsExactlyTheReviewedBinariesAndPreservesUserConfiguration()
+    public void ResidentHookMarkerKeepsPidAndStartTime()
     {
-        var root = Path.Combine(Path.GetTempPath(), "QQListener-PMHQ-test-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "QQListener-PMHQ-marker-" + Guid.NewGuid().ToString("N"));
         try
         {
             var bundle = new PmhqBundle(root);
-            bundle.Prepare();
             bundle.RememberResidentHook(42, 123456);
             Assert.True(bundle.HasResidentHook(42, 123456));
-            Assert.False(bundle.HasResidentHook(42, 123457)); // Reused PID belongs to a different process.
+            Assert.False(bundle.HasResidentHook(42, 123457));
             Assert.False(bundle.HasResidentHook(43, 123456));
-            Assert.False(File.Exists(Path.Combine(bundle.BinaryDirectory, "pmhq-win-x64.exe")));
-            Assert.False(File.Exists(bundle.ConfigurationPath));
-            Assert.Equal(1_076_224, new FileInfo(Path.Combine(bundle.BinaryDirectory, "pmhq.dll")).Length);
-            File.WriteAllText(bundle.ConfigurationPath, "user-managed-configuration");
-            File.WriteAllText(Path.Combine(bundle.BinaryDirectory, "pmhq.dll"), "damaged");
-            bundle.Prepare();
-            Assert.Equal(1_076_224, new FileInfo(Path.Combine(bundle.BinaryDirectory, "pmhq.dll")).Length);
-            Assert.Equal("user-managed-configuration", File.ReadAllText(bundle.ConfigurationPath));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

@@ -6,5 +6,6 @@ public interface IPmhqHost : IDisposable
     IPmhqClient? Client { get; }
     bool HasExited { get; }
     bool NativeInitialized { get; }
+    Task PrepareAsync(string? proxy, CancellationToken ct) => Task.CompletedTask;
     void Start(int qqPid);
 }

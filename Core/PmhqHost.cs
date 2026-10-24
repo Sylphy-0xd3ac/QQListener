@@ -6,7 +6,7 @@ using QQListener.Pipes;
 
 namespace QQListener.Core;
 
-/// <summary>Loads only the bundled local DLL. No manager launcher or startup credential.</summary>
+/// <summary>Loads the verified local DLL reconstructed from the pinned upstream release.</summary>
 public sealed class PmhqHost : IPmhqHost
 {
     private readonly PmhqBundle _bundle;
@@ -34,6 +34,7 @@ public sealed class PmhqHost : IPmhqHost
     }
 
     public PmhqHost(PmhqBundle bundle) => _bundle = bundle;
+    public Task PrepareAsync(string? proxy, CancellationToken ct) => _bundle.PrepareAsync(proxy, ct);
 
     private string CurrentAccount()
     {
@@ -66,7 +67,7 @@ public sealed class PmhqHost : IPmhqHost
         if (_qq is not null) throw new InvalidOperationException("PMHQ 已启动");
         if (!OperatingSystem.IsWindows() || !WindowsQqProcessSource.IsStillMainQqProcess(qqPid))
             throw new IOException("所选 QQ 主进程已退出或发生变化，请重新检查");
-        _bundle.Prepare();
+        _bundle.VerifyInstalled();
         var external = Process.GetProcessesByName("pmhq-win-x64");
         try
         {

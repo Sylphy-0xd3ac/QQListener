@@ -20,7 +20,7 @@
     <ScrollViewer>
         <StackPanel Classes="settings-container animated-intro" Spacing="4">
 
-            <!-- 当前引擎运行状态；SnowLuma 独立安装，PMHQ 为内置实验选项。 -->
+            <!-- 当前引擎运行状态；SnowLuma 独立安装，PMHQ 为按需下载的实验选项。 -->
             <TextBlock FontSize="18"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
@@ -70,7 +70,7 @@
                                        Description="积压上限、重新触发安装向导与卸载内核。">
                 <controls:SettingsExpander.Items>
                     <controls:SettingsExpanderItem Content="重新触发安装向导"
-                        Description="安装、更新 SnowLuma 并阅读其许可。PMHQ 已内置，请在底部调试区配置。">
+                        Description="安装、更新 SnowLuma 并阅读其许可。PMHQ 在底部调试区启用，首次使用自动下载。">
                         <controls:SettingsExpanderItem.Footer>
                             <Button Content="重新触发安装向导" Click="OnOpenKernelWizardClick"
                                     IsEnabled="{Binding KernelSetup.IsSupported}" />

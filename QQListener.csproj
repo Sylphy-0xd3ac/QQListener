@@ -28,7 +28,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Assets/PMHQ/win-x64/pmhq.dll" LogicalName="QQListener.PMHQ.pmhq.dll" />
+        <EmbeddedResource Include="Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch" LogicalName="QQListener.PMHQ.local-pipe.patch" />
         <Content Include="Assets/Sounds/notify_sound.mp3"
                  CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets/Sounds/important_sound.mp3"

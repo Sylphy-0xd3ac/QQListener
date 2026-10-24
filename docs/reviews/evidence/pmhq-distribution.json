@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-24",
+  "upstream_url": "https://github.com/linyuchen/PMHQ/releases/download/v9.0.6/pmhq-win-x64.zip",
+  "upstream_version": "v9.0.6",
+  "archive_bytes": 14533737,
+  "archive_sha256": "64da6159976aee0eb1b67bc0c82ca3c540d9bfd4a41cc17d5a308e24dbfd7587",
+  "original_bytes": 1034752,
+  "original_sha256": "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4",
+  "patch_format": "QQLDIFF1",
+  "patch_bytes": 41788,
+  "patch_ranges": 14,
+  "patch_sha256": "6eea307e7f5495093bff6ab920de12afd627d287581b662f99d497ea5a522995",
+  "result_bytes": 1076224,
+  "result_sha256": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
+  "validation": {
+    "live_official_download_with_managed_installer": true,
+    "byte_equal_to_beta_1_dll": true,
+    "static_tls_directory_preserved": true,
+    "offline_repair_with_network_disabled": true,
+    "tests_passed": 673,
+    "tests_failed": 0,
+    "real_windows_qq_signing_and_delivery_verified": false
+  },
+  "source_sha256": {
+    "Core/BinaryDelta.cs": "58b3d026b4a1d572a684fafc92f1ec992c5187ac55e856d9b7e54e37ca26af30",
+    "Core/PmhqBundle.cs": "f0d1732daf7553e6ec06e20d99e6e22ed92fa277fb22c95c9d0f9bda8c66da32",
+    "Core/IPmhqHost.cs": "4f5033e782a5743808b6f282940fd87c69357dc693f22c6d059b2ef1c03ae14f",
+    "Core/PmhqHost.cs": "88d503c0111eb329811f3f014335bd622b1c5320923b12dd47c67951c5d92972",
+    "Services/QqEngineService.cs": "845e22c5b9311f16f438f74f1533a45852d4987172755c6867b5a58e440fd7f2"
+  }
+}

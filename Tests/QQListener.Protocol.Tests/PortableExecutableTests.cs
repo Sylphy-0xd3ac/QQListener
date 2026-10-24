@@ -22,7 +22,7 @@ public class PortableExecutableTests
     private const uint HintNameRva = DataRva + 0xA0;          // 0x30A0
     private const uint RelocRva = 0x4000;
 
-    private static byte[] BuildProbeImage()
+    internal static byte[] BuildProbeImage()
     {
         var raw = new byte[0x2600];
         var span = raw.AsSpan();

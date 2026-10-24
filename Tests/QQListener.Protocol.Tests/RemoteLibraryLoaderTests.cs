@@ -1,4 +1,5 @@
 using System.Text;
+using System.Buffers.Binary;
 using QQListener.Core;
 using QQListener.Native;
 
@@ -7,12 +8,13 @@ namespace QQListener.Protocol.Tests;
 public sealed class RemoteLibraryLoaderTests
 {
     [Fact]
-    public void BundledPmhqCannotUseTheManualMapper()
+    public void ImagesWithStaticTlsCannotUseTheManualMapper()
     {
-        using var resource = typeof(PmhqBundle).Assembly.GetManifestResourceStream("QQListener.PMHQ.pmhq.dll")!;
-        using var bytes = new MemoryStream();
-        resource.CopyTo(bytes);
-        var pe = PortablePeImage.Parse(bytes.ToArray());
+        var bytes = PortableExecutableTests.BuildProbeImage();
+        var directory = 0x84 + 20 + 112 + PortablePeImage.ImageDirectoryEntryTls * 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(directory), 0x3100);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(directory + 4), 40);
+        var pe = PortablePeImage.Parse(bytes);
         Injector.ValidatePe(pe);
         Assert.NotEqual(0u, pe.Directory(PortablePeImage.ImageDirectoryEntryTls).VirtualAddress);
         Assert.Contains("TLS", Assert.Throws<InjectionError>(() => Injector.ValidateManualMapping(pe)).Message);

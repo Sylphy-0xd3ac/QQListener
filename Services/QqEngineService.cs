@@ -41,6 +41,8 @@ public sealed class QqEngineService(
         public readonly CancellationTokenSource Lifetime = new();
         public readonly Dictionary<int, string> Accounts = [];
         public Task? ReceiveTask;
+        public volatile bool Starting;
+        public volatile Exception? StartFailure;
         public volatile bool RequiresRestart;
         public volatile bool Stopped;
 
@@ -141,7 +143,17 @@ public sealed class QqEngineService(
             CoreRuntime.Set(CoreRuntimeState.Detached, "PMHQ 已停止连接；QQ 内的钩子需要重启 QQ 清理");
             return;
         }
-        if (session?.Host?.HasExited == true)
+        if (session?.StartFailure is { } startFailure)
+        {
+            StopCurrent();
+            throw new IOException("PMHQ 准备失败：" + startFailure.Message, startFailure);
+        }
+        if (session is { Starting: true } && !EnumeratePids().Contains(session.PmhqPid))
+        {
+            StopCurrent();
+            session = null;
+        }
+        if (session is { Starting: false } && session.Host?.HasExited == true)
         {
             // Its hooks died with the old process. A visible replacement has no old hooks.
             StopCurrent();
@@ -179,8 +191,9 @@ public sealed class QqEngineService(
                 session.PmhqPid = pids[0];
                 session.Host = createPmhqHost?.Invoke()
                     ?? new PmhqHost(new PmhqBundle(KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory)));
-                session.Host.Start(pids[0]);
-                session.ReceiveTask = RunPmhqAsync(session);
+                session.Starting = true;
+                CoreRuntime.Set(CoreRuntimeState.Waiting, "正在准备 PMHQ v9.0.6；首次使用需要下载并应用补丁");
+                session.ReceiveTask = Task.Run(() => StartPmhqAsync(session));
             }
             catch { StopCurrent(); throw; }
         }
@@ -239,6 +252,32 @@ public sealed class QqEngineService(
         {
             if (session is not null && !session.Stopped && ReferenceEquals(session, Volatile.Read(ref _current)))
                 CoreRuntime.Set(state, detail, pid);
+        }
+    }
+
+    private async Task StartPmhqAsync(Session session)
+    {
+        try
+        {
+            await session.Host!.PrepareAsync(settings.KernelDownloadProxy, session.Lifetime.Token);
+            lock (_gate)
+            {
+                if (session.Stopped || !ReferenceEquals(session, _current)
+                    || settings.Engine != ListenerEngine.PMHQ || CoreController.GetState() == CoreState.Detached) return;
+                session.Host.Start(session.PmhqPid);
+                session.Starting = false;
+            }
+            await RunPmhqAsync(session);
+        }
+        catch (OperationCanceledException) when (session.Lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            lock (_gate)
+            {
+                if (session.Stopped || !ReferenceEquals(session, _current)) return;
+                session.StartFailure = ex;
+                session.Starting = false;
+            }
         }
     }
 
