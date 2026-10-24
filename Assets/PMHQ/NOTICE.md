@@ -10,6 +10,10 @@ does not require an auth_token, manager request or local HTTP service. Commands
 reach a captured in-process QQ sendSso entry. The default runtime does not call
 the separate pmhq_sign RPC; final signing and delivery require real QQ validation.
 
+PmhqHost loads the DLL through LoadLibraryW in the selected QQ process so the
+system loader initializes its static TLS. The manual mapper rejects TLS images.
+The loaded module remains resident until QQ exits; it is not hot-unloaded.
+
 | File | SHA-256 |
 | --- | --- |
 | Bundled pmhq.dll | 2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b |
@@ -21,5 +25,6 @@ Original code/data sections are preserved on disk; the wrapper changes the
 runtime configuration filename namespace in memory before initialization.
 
 Isolated Wine 10 checks cover local initialization, anchor decoding, the native
-account layout and command parsing/error serialization. They do not validate
+account layout, command parsing/error serialization, and TLS isolation on the
+loading thread, a pre-existing thread and a new thread. They do not validate
 native Windows, real QQ hook installation, signatures or message delivery.

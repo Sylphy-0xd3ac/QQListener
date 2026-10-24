@@ -15,6 +15,11 @@ The managed host is `Core/PmhqHost.cs`; transport and protocol are
 must have the current user and the selected QQ PID. Requests are correlated by
 numeric id; a failed or interrupted send is never replayed.
 
+PMHQ contains static TLS. `PmhqHost` uses `WindowsProcess.LoadLibraryFile` to call
+the system's LoadLibraryW inside QQ with the full DLL path. The return value is
+read as a 64-bit module handle. Incomplete remote calls retain their argument
+memory; the DLL stays loaded until QQ exits. The manual mapper rejects TLS images.
+
 ## Build
 
 Use Zig 0.15.2 and Python 3 with pefile:
@@ -37,15 +42,23 @@ prefix with the absolute DLL path as the only argument:
 ```sh
 zig cc -target x86_64-windows-gnu -O0 -municode tests/proof_probe.c -o proof-probe.exe
 zig cc -target x86_64-windows-gnu -O0 -municode tests/pipe_probe.c -o pipe-probe.exe
+zig cc -target x86_64-windows-gnu -O0 -municode tests/tls_loader_probe.c -o tls-loader-probe.exe
 ```
 
-Both programs use PMHQ's explicit `PMHQ_SRDI_TEST` option. They do not inject QQ.
+All probes use PMHQ's explicit `PMHQ_SRDI_TEST` option. They do not inject QQ.
 The proof probe checks all four decoded anchors. The pipe probe checks wrapper
 status and native account layout, sends a fixture command over the actual native
 pipe reader, and captures the serialized response before the transport queue.
 That queue callback is replaced only inside the short-lived fixture process:
 this is a command-parser/error-serialization check, not proof of the complete
 native event writer or actual QQ message delivery.
+
+The TLS probe checks the loading thread, a thread created before LoadLibraryW,
+and a thread created afterward. It exercises the pinned DLL's Rust TLS accessor,
+checks distinct per-thread blocks and verifies the host's static TLS is unchanged.
+Earlier initialization probes already used LoadLibraryW and therefore did not
+cover the former production manual-mapping path. This probe validates the loader's
+TLS behavior in a fixture, not remote injection or signing in real QQ.
 
 See `Assets/PMHQ/NOTICE.md` for binary identities and
 `docs/reviews/dual-engine.md` for integration review and remaining validation.

@@ -179,7 +179,8 @@ public sealed class WindowsProcess : IRemoteMemory, IDisposable
             if (waitResult == WaitTimeout)
                 throw new RemoteCallTimeoutException("远程调用 30 秒未返回；保留调用页以避免目标进程崩溃");
             if (waitResult != WaitObject0)
-                ThrowLastError("WaitForSingleObject");
+                throw new RemoteCallTimeoutException(
+                    $"无法确认远程线程结束（wait=0x{waitResult:x}）；保留调用页和参数以避免目标进程崩溃");
 
             completed = true;
             return BitConverter.ToUInt64(Read(resultAddress, 8));
@@ -252,34 +253,28 @@ public sealed class WindowsProcess : IRemoteMemory, IDisposable
         var key = Path.GetFileName(moduleName).ToLowerInvariant();
         if (ModuleEntries().TryGetValue(key, out var existing)) return existing.Base;
 
-        var encoded = Encoding.Unicode.GetBytes(moduleName + "\0");
-        var remoteString = Alloc((uint)encoded.Length);
-        if (remoteString == 0) ThrowLastError("VirtualAllocEx(import name)");
-        var safeToFree = true;
-        ulong loaded;
-        try
-        {
-            Write(remoteString, encoded);
-            loaded = RemoteCall(LoadLibraryAddress(), remoteString);
-        }
-        catch (RemoteCallTimeoutException)
-        {
-            // remoteString 正是这次超时的远程调用（LoadLibraryW）的参数指针——
-            // 目标线程可能还没跑完、还在读它。跟本类其余地方对同一个异常的处理
-            // 原则一致：宁可泄漏这一小块内存，也不要在目标可能还在用的时候释放它。
-            safeToFree = false;
-            throw;
-        }
-        finally
-        {
-            if (safeToFree) Free(remoteString);
-        }
-        if (loaded == 0)
-            throw new InjectionError($"目标进程 LoadLibraryW 失败: {moduleName}");
+        var loaded = LoadLibraryInTarget(moduleName);
 
         // API-set 名称会被加载器重定向，不一定作为同名模块出现在快照里；LoadLibraryW
         // 的返回值仍是目标进程里的有效模块句柄。后续实际函数地址按 owner 模块换算。
         return ModuleEntries().TryGetValue(key, out var refreshed) ? refreshed.Base : loaded;
+    }
+
+    /// <summary>Use the Windows loader, including static TLS for existing and future threads.</summary>
+    public ulong LoadLibraryFile(string dllPath)
+    {
+        var fullPath = Path.GetFullPath(dllPath);
+        if (!File.Exists(fullPath)) throw new FileNotFoundException("找不到内核 DLL", fullPath);
+        if (ModuleEntries().ContainsKey(Path.GetFileName(fullPath).ToLowerInvariant()))
+            throw new InjectionError("目标进程已有同名内核 DLL，请重启 QQ 后重新连接");
+        return LoadLibraryInTarget(fullPath);
+    }
+
+    private ulong LoadLibraryInTarget(string name)
+    {
+        var entry = LoadLibraryAddress();
+        return RemoteLibraryLoader.Load(name, size => Alloc(size), Write,
+            argument => RemoteCall(entry, argument), Free);
     }
 
     public ulong ResolveImport(string module, byte[]? name, int? ordinal)

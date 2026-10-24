@@ -142,10 +142,8 @@ public class QqNotificationProvider : NotificationProviderBase, IHostedService
         CancellationToken cancellationToken = default,
         MessagePreviewKind kind = MessagePreviewKind.Text)
     {
-        var message = MessagePreviewSamples.Create(kind, importance);
-
         _logger.LogInformation("显示测试提醒（重要性={Importance}）", importance);
-        return _notifier.ShowAsync(message, ShowNotification, cancellationToken);
+        return _notifier.ShowPreviewAsync(kind, importance, ShowNotification, cancellationToken);
     }
 
     private Task ShowQqNotificationAsync(MessageEvent message, CancellationToken cancellationToken)

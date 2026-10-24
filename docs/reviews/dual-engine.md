@@ -28,7 +28,7 @@ LLBot、SnowLuma 本地源码分别按固定提交核对了 1092、1236 个 blob
 | 引擎管理 | `QqEngineService` 串行管理 SnowLuma / PMHQ。默认 SnowLuma，切换清队列和窗口，等待旧 QQ 退出；禁止同进程混装 |
 | SnowLuma 传输 | 对照其 qq-hook-client / hook-packet-client，保留 HQP1 帧、请求回包和登录语义；control 请求限时，recv 长连接不套该超时 |
 | PMHQ 初始化 | 新 `local_pipe.c` 在原 DLL 内生成 nonce 和初始化参数，再调用原入口。四组定位信息可以本机正确解码，不请求 manager；运行时文件改用独立名称，避免旧启动器配置覆盖本机参数 |
-| PMHQ 进程 | `PmhqHost` 使用现有手动映射器装载 DLL。没有常驻辅助 EXE、HTTP/WS 服务、启动凭证或绑定/上报客户端 |
+| PMHQ 进程 | `PmhqHost` 在 QQ 内调用系统 `LoadLibraryW`，由加载器初始化静态 TLS；保存完整 64 位模块句柄，直到 QQ 退出前不卸载。没有常驻辅助 EXE、HTTP/WS 服务、启动凭证或绑定/上报客户端 |
 | PMHQ 管道 | DLL 的协议与 LLBot 使用的启动器 HTTP 协议不同。命令为一行 `{id,cmd,body}`；原生回包为 `{kind:"resp",id,code,data,msg}`，不是 HTTP 的 echo/pb 包装 |
 | 接收 | 原生 trace 的 type 为 recv/send。仅无 echo 的 MsgPush 进入共同 SsoDecode；请求回包和发送镜像不显示为聊天 |
 | 发包 | 本机命令进入 DLL active_send，再调用捕获的 QQ sendSso 指针；最终签名尚未验证。必须 id 匹配、code 为 0，拒绝无效 data；不记录 msg/pb，不在断线或超时后自动重发。群文字回复还必须有正数群序号回执 |
@@ -46,6 +46,9 @@ LLBot 会为历史同步发送额外 InfoSync，本插件只提醒新消息，�
 
 | 程度 | 修正 | 验证 |
 | --- | --- | --- |
+| 高 | PMHQ 的 136 字节静态 TLS 不可只执行回调；改用系统加载器，并在手动映射入口拒绝 TLS 映像 | 旧映射 fixture 实际改写宿主 TLS；新 probe 在加载线程、已有线程、新线程均未改写宿主数据，见 [TLS 记录](evidence/pmhq-tls-loader.json)；模块句柄和超时参数生命周期有托管回归 |
+| 中 | 旧接收任务等待清理期间已建立新会话，迟到的换号异常仍无条件解绑；改为按 epoch 原子解绑，并在当前会话锁内执行状态清理 | 延迟 receive 清理后启动 PID 22 的回归，等待旧任务完整结束，确认绑定及诊断不变；旧实现实际多触发一次解绑 |
+| 中 | 本地测试提醒没有 EngineSession，曾被真实消息校验拒绝；增加只接受内置样例类型的预览入口，队列保留独立标记，不能与真实消息混合 | 三种预览在有/无引擎连接时显示，普通消息入口仍拒绝空会话；取消、会话变化和队列隔离检查 |
 | 高 | 切换和换号后旧窗口不得复用新路由；驻留标记包含 PID 与启动时间，切回仍需等旧 QQ 退出 | EngineLifecycleTests、路由/session/bundle 测试 |
 | 高 | detach 或注销 unwind 失败后停止后续映像释放，避免仍运行的原生回调落入已释放内存 | RemoteImageCleanupTests、CoreServiceTests |
 | 高 | HTTP echo 不代表成功；本机管道同样严格检查响应 id/code/data，失败正文不进入错误日志 | PmhqProtocolTests、PmhqClientTests、PmhqLocalClientTests |
@@ -62,7 +65,7 @@ LLBot 会为历史同步发送额外 InfoSync，本插件只提醒新消息，�
 
 ## 验证结果
 
-- Release 解决方案测试：641 通过，0 失败、0 跳过，其中协议/生命周期 376，模型/服务 265。
+- Release 解决方案测试：650 通过，0 失败、0 跳过，其中协议/生命周期 383，模型/服务 267。
 - Windows 目标的全部工程锁定依赖交叉编译通过，0 警告、0 错误。DLL 从仓库源码重建后与内置文件逐字节一致。
 - 新本机管道测试覆盖原生 response 结构、无凭证命令、数字 id、失败不泄露、UTF-8/JSON 分片、enrichment 发包不死锁、连接 PID、换号和退出前置检查。
 - PMHQ → ClassIsland 集成使用两条合成 protobuf push，经 decoder、规则、暂停摘要到通知请求，核对等级、时长和 session；不是真实宿主运行结果。

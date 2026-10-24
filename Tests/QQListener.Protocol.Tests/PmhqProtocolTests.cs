@@ -7,6 +7,27 @@ namespace QQListener.Protocol.Tests;
 
 public sealed class PmhqProtocolTests
 {
+    [Fact]
+    public void StaleUnbindCannotClearOrNotifyForANewerBinding()
+    {
+        var router = new EngineCommandRouter();
+        var old = Guid.NewGuid();
+        var current = Guid.NewGuid();
+        var api = QqControlApi.OverRequests((_, _, _) => [42]);
+        router.Bind(old, api);
+        router.Bind(current, api);
+        var changes = 0;
+        router.SessionChanged += () => changes++;
+        Assert.False(router.TryUnbind(old));
+        Assert.False(router.TryUnbind(Guid.Empty));
+        Assert.True(router.IsCurrent(current));
+        Assert.Equal(new byte[] { 42 }, router.ForSession(current).SendRaw(22, "fixture", []));
+        Assert.Equal(0, changes);
+        Assert.True(router.TryUnbind(current));
+        Assert.False(router.IsCurrent(current));
+        Assert.Equal(1, changes);
+    }
+
     private static byte[] Json(string text) => Encoding.UTF8.GetBytes(text);
 
     [Theory]

@@ -15,6 +15,23 @@ public sealed class EngineCommandRouter
     public void Bind(Guid session, QqControlApi? api)
     {
         lock (_gate) { _session = session; _api = api; }
+        NotifySessionChanged();
+    }
+
+    public bool TryUnbind(Guid session)
+    {
+        lock (_gate)
+        {
+            if (session == Guid.Empty || session != _session) return false;
+            _session = Guid.Empty;
+            _api = null;
+        }
+        NotifySessionChanged();
+        return true;
+    }
+
+    private void NotifySessionChanged()
+    {
         var callbacks = SessionChanged;
         if (callbacks is null) return;
         foreach (Action callback in callbacks.GetInvocationList())

@@ -271,16 +271,23 @@ public sealed class QqEngineService(
             catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
             catch (PmhqAccountChangedException)
             {
-                commands.Bind(Guid.Empty, null);
-                session.Source.ClearSessionState();
-                session.RequiresRestart = true;
-                CoreRuntime.Set(CoreRuntimeState.Error, "PMHQ 账号或登录状态变化，请重启 QQ 后继续");
+                lock (_gate)
+                {
+                    if (session.Stopped || !ReferenceEquals(session, _current)) return;
+                    if (!commands.TryUnbind(session.Epoch)) return;
+                    session.Source.ClearSessionState();
+                    session.RequiresRestart = true;
+                    CoreRuntime.Set(CoreRuntimeState.Error, "PMHQ 账号或登录状态变化，请重启 QQ 后继续");
+                }
                 return;
             }
             catch (Exception)
             {
-                if (token.IsCancellationRequested) return;
-                CoreRuntime.Set(CoreRuntimeState.Waiting, "PMHQ 本机接收管道未就绪，正在重试；可在调试区重新检查");
+                lock (_gate)
+                {
+                    if (token.IsCancellationRequested || session.Stopped || !ReferenceEquals(session, _current)) return;
+                    CoreRuntime.Set(CoreRuntimeState.Waiting, "PMHQ 本机接收管道未就绪，正在重试；可在调试区重新检查");
+                }
             }
             try { await Task.Delay(1000, token); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
@@ -288,14 +295,17 @@ public sealed class QqEngineService(
 
         void ReportHealth(Protocol.PmhqHealth health)
         {
-            if (session.Stopped) return;
-            var initialized = session.Host!.NativeInitialized;
-            var ready = health.LoggedIn && initialized && client.IsConnected;
-            CoreRuntime.Set(ready ? CoreRuntimeState.Connected : CoreRuntimeState.Waiting,
-                ready ? "PMHQ 本机引擎已连接，无需启动凭证"
-                    : health.LoggedIn ? initialized ? "PMHQ 内核就绪，等待本机接收管道"
-                        : "PMHQ 正在初始化 QQ 内核；暂不发送回复及凭证请求"
-                    : "PMHQ 正在等待本机 QQ 登录及消息，无需启动凭证", health.Pid);
+            lock (_gate)
+            {
+                if (session.Stopped || !ReferenceEquals(session, _current)) return;
+                var initialized = session.Host!.NativeInitialized;
+                var ready = health.LoggedIn && initialized && client.IsConnected;
+                CoreRuntime.Set(ready ? CoreRuntimeState.Connected : CoreRuntimeState.Waiting,
+                    ready ? "PMHQ 本机引擎已连接，无需启动凭证"
+                        : health.LoggedIn ? initialized ? "PMHQ 内核就绪，等待本机接收管道"
+                            : "PMHQ 正在初始化 QQ 内核；暂不发送回复及凭证请求"
+                        : "PMHQ 正在等待本机 QQ 登录及消息，无需启动凭证", health.Pid);
+            }
         }
     }
 
@@ -303,7 +313,7 @@ public sealed class QqEngineService(
     {
         Session? old;
         lock (_gate) { old = _current; _current = null; }
-        commands.Bind(Guid.Empty, null);
+        if (old is not null) commands.TryUnbind(old.Epoch);
         old?.Stop(unloadOwnedSnow);
         pipeline.ClearState();
     }

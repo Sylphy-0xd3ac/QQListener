@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-24",
+  "environment": "isolated Wine 10 x64 fixture on macOS; PMHQ_SRDI_TEST=1; no QQ process",
+  "dll_sha256": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
+  "native_tls_template_bytes": 136,
+  "native_tls_index_rva": "0xf59c0",
+  "native_tls_accessor_rva": "0x7fdb0",
+  "manual_mapping_reproduction": {
+    "method": "review fixture maps sections, imports and relocations, registers unwind information, then calls TLS callbacks and DllMain",
+    "tls_index_after_callbacks": 0,
+    "tls_index_after_entry": 0,
+    "host_tls_changed_bytes": 7,
+    "result": "unsafe: host TLS modified by the DLL accessor"
+  },
+  "system_loader_probe": {
+    "source": "Tools/PMHQ.LocalSign/tests/tls_loader_probe.c",
+    "source_sha256": "6b391853dfde30f1a8a21570abbbbaba8f8b20dafd8dc63b5892a0ba71c60f1d",
+    "compiler": "Zig 0.15.2, x86_64-windows-gnu, -O0 -municode",
+    "loader": "LoadLibraryW",
+    "threads": [
+      { "kind": "loading thread", "dll_tls_index": 1, "host_tls_index": 0, "host_tls_changed_bytes": 0 },
+      { "kind": "created before load", "dll_tls_index": 1, "host_tls_index": 0, "host_tls_changed_bytes": 0 },
+      { "kind": "created after load", "dll_tls_index": 1, "host_tls_index": 0, "host_tls_changed_bytes": 0 }
+    ],
+    "distinct_live_thread_tls_blocks": true,
+    "existing_thread_touched_host_tls_before_load": true,
+    "exit_code": 0
+  },
+  "production_changes": {
+    "host": "Core/PmhqHost.cs uses WindowsProcess.LoadLibraryFile with the bundled DLL's full path",
+    "module_handle": "64-bit remote return buffer, not GetExitCodeThread",
+    "lifetime": "no remote FreeLibrary; retain arguments if remote completion is unknown",
+    "manual_mapper": "reject any TLS directory before allocating or running the image"
+  },
+  "limitations": [
+    "The fixture tests system-loader TLS behavior, not the complete managed remote-injection path.",
+    "Prior initialization probes used LoadLibrary and did not cover the former production manual mapper.",
+    "No native Windows QQ hook, final signing or delivery acceptance is claimed."
+  ]
+}

@@ -23,6 +23,30 @@ public sealed class MessageNotificationQueueTests
         new(message, Show, token);
 
     [Fact]
+    public void PreviewCannotCarryAnUnvalidatedLiveMessageIntoItsDigest()
+    {
+        var queue = new MessageNotificationQueue();
+        queue.Enqueue(Item(Message("preview")) with { IsPreview = true });
+        queue.Enqueue(Item(Message("live")));
+        Assert.Equal("preview", queue.TakeNext()!.Message.Body);
+        var live = queue.TakeNext()!;
+        Assert.False(live.IsPreview);
+        Assert.Equal("live", live.Message.Body);
+    }
+
+    [Fact]
+    public void EngineCleanupPreservesOnlyExplicitPreviewItems()
+    {
+        var queue = new MessageNotificationQueue();
+        queue.Enqueue(Item(Message("live")));
+        queue.Enqueue(Item(Message("preview")) with { IsPreview = true });
+        queue.ClearEngineNotifications();
+        Assert.Equal(1, queue.MessageCount);
+        Assert.True(queue.TakeNext()!.IsPreview);
+        Assert.Null(queue.TakeNext());
+    }
+
+    [Fact]
     public void HighestPriorityComesFirstAndEqualPrioritiesKeepArrivalOrder()
     {
         var queue = new MessageNotificationQueue();

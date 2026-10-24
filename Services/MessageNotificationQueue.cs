@@ -6,6 +6,7 @@ namespace QQListener.Services;
 internal sealed record QueuedMessageNotification(
     MessageEvent Message, Action<NotificationRequest> ShowNotification, CancellationToken CancellationToken)
 {
+    public bool IsPreview { get; init; }
     public int MessageCount => Message.IsPendingDigest ? Message.PendingMessages.Count : 1;
 }
 
@@ -42,7 +43,7 @@ internal sealed class MessageNotificationQueue(int capacity = 100, int batchSize
             foreach (var item in _messages.ToArray())
             {
                 if (batch.Count >= Math.Max(1, batchSize)) break;
-                if (item.Message.IsPendingDigest || item.Message.Importance != first.Message.Importance
+                if (item.IsPreview != first.IsPreview || item.Message.IsPendingDigest || item.Message.Importance != first.Message.Importance
                     || item.ShowNotification != first.ShowNotification
                     || item.CancellationToken != first.CancellationToken
                     || !SameConversation(first.Message, item.Message)
@@ -65,6 +66,12 @@ internal sealed class MessageNotificationQueue(int capacity = 100, int batchSize
     public void Clear()
     {
         _messages.Clear();
+        _dropped = 0;
+    }
+
+    public void ClearEngineNotifications()
+    {
+        _messages.RemoveAll(item => !item.IsPreview);
         _dropped = 0;
     }
 

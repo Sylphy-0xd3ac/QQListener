@@ -6,7 +6,7 @@
     "Assets/PMHQ/win-x64/pmhq.dll": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
     "upstream-original-pmhq.dll": "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4",
     "Core/PmhqLocalClient.cs": "02b6ba40b0ea79032c62518e857b1de7b480bd3f050e781a397fec422f516896",
-    "Core/PmhqHost.cs": "59020733bace1f13c35e3826a5b575a0c7dc8c8b5a44b6f1b62e6c9847994c1d",
+    "Core/PmhqHost.cs": "6d255a4978f7e62809435a0a19c4a80d7de314c627db292f2334cee55a4ac78c",
     "Oidb/MessageSender.cs": "92dcad413e17584b69f2927feb4997a8ebe3624d8de32b6f1eba5a25a4f1cc30",
     "Oidb/QqControlApi.cs": "bd19422e13ae8bb06459c4d3db3ee9358af85ef32bcfb26ab121652ed8577c1e"
   },
@@ -33,12 +33,12 @@
   "real_QQ_delivery_verified": false,
   "UIN_cache_is_live_login_query": false,
   "regression_tests": {
-    "passed": 641,
+    "passed": 650,
     "failed": 0,
     "skipped": 0,
-    "protocol_and_lifecycle": 376,
-    "models_and_services": 265,
-    "trx_prefix": "session-review-fixes"
+    "protocol_and_lifecycle": 383,
+    "models_and_services": 267,
+    "trx_prefix": "tls-session-preview-fixes"
   },
   "limitations": [
     "Static analysis stops at the captured QQ send function pointer.",

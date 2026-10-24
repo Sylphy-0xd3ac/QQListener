@@ -12,6 +12,7 @@ public class ClassIslandMessageNotifier : IDisposable
     private readonly QqListenerDiagnosticsState? _diagnostics;
     private readonly MessageNotificationQueue _queue = new();
     private QqMessageWindow? _activeWindow;
+    private bool _activeIsPreview;
     private bool _disposed;
     private readonly MessageReplyService? _replyService;
     private readonly Core.EngineCommandRouter? _engines;
@@ -27,20 +28,28 @@ public class ClassIslandMessageNotifier : IDisposable
         settings.PropertyChanged += OnSettingsChanged;
     }
 
-    public async Task ShowAsync(
+    public Task ShowAsync(
         MessageEvent messageEvent,
         Action<NotificationRequest> showNotification,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) => ShowCoreAsync(messageEvent, showNotification, cancellationToken, false);
+
+    /// <summary>Only built-in samples can bypass the live engine's session check.</summary>
+    public Task ShowPreviewAsync(MessagePreviewKind kind, MessageImportance importance,
+        Action<NotificationRequest> showNotification, CancellationToken cancellationToken) =>
+        ShowCoreAsync(MessagePreviewSamples.Create(kind, importance), showNotification, cancellationToken, true);
+
+    private async Task ShowCoreAsync(MessageEvent messageEvent, Action<NotificationRequest> showNotification,
+        CancellationToken cancellationToken, bool isPreview)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!IsCurrent(messageEvent)) return;
+        if (!isPreview && !IsCurrent(messageEvent)) return;
 
         void DoShow()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsCurrent(messageEvent)) return;
-            _queue.Enqueue(new QueuedMessageNotification(messageEvent, showNotification, cancellationToken));
+            if (!isPreview && !IsCurrent(messageEvent)) return;
+            _queue.Enqueue(new QueuedMessageNotification(messageEvent, showNotification, cancellationToken) { IsPreview = isPreview });
             ShowNext();
             _activeWindow?.UpdateQueuedCount(_queue.MessageCount);
         }
@@ -96,13 +105,13 @@ public class ClassIslandMessageNotifier : IDisposable
         if (_disposed || _activeWindow is not null) return;
         while (_queue.TakeNext() is { } item)
         {
-            if (!IsCurrent(item.Message)) continue;
+            if (!IsCurrent(item)) continue;
             var request = BuildRequest(item.Message);
             try
             {
                 item.ShowNotification(request);
                 // A host callback can synchronously change the engine/account before a window exists.
-                if (!IsCurrent(item.Message))
+                if (!IsCurrent(item))
                 {
                     request.Cancel();
                     continue;
@@ -113,8 +122,9 @@ public class ClassIslandMessageNotifier : IDisposable
                 var window = QqMessageWindow.ShowMessage(item.Message, request.OverlayContent!.Duration,
                     settings.DownloadsDirectory, true, settings.PerformanceMode, settings.DefaultReplyText,
                     request, item.CancellationToken, settings.AutoDownloadFiles, settings.ReplyOnConfirmEnabled,
-                    settings.ReplyWithOkReaction, _replyService, _engines);
+                    settings.ReplyWithOkReaction, _replyService, item.IsPreview ? null : _engines);
                 _activeWindow = window;
+                _activeIsPreview = item.IsPreview;
                 window.UpdateQueuedCount(_queue.MessageCount);
                 window.Closed += (_, _) =>
                 {
@@ -132,6 +142,7 @@ public class ClassIslandMessageNotifier : IDisposable
     }
 
     private bool IsCurrent(MessageEvent message) => _engines?.IsCurrent(message) ?? true;
+    private bool IsCurrent(QueuedMessageNotification item) => item.IsPreview || IsCurrent(item.Message);
 
     public async Task CancelAllAsync()
     {
@@ -145,11 +156,19 @@ public class ClassIslandMessageNotifier : IDisposable
         _activeWindow?.SafeClose();
     }
 
+    private void ClearEngineNotifications()
+    {
+        _queue.ClearEngineNotifications();
+        if (!_activeIsPreview) _activeWindow?.SafeClose();
+        _activeWindow?.UpdateQueuedCount(_queue.MessageCount);
+    }
+
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName is not (nameof(QqListenerSettings.IsEnabled) or nameof(QqListenerSettings.Engine))) return;
-        if (Dispatcher.UIThread.CheckAccess()) Clear();
-        else Dispatcher.UIThread.Post(Clear);
+        Action clear = args.PropertyName == nameof(QqListenerSettings.Engine) ? ClearEngineNotifications : Clear;
+        if (Dispatcher.UIThread.CheckAccess()) clear();
+        else Dispatcher.UIThread.Post(clear);
     }
 
     public void Dispose()
@@ -165,8 +184,8 @@ public class ClassIslandMessageNotifier : IDisposable
     private void OnEngineSessionChanged()
     {
         if (_disposed) return;
-        if (Dispatcher.UIThread.CheckAccess()) Clear();
-        else Dispatcher.UIThread.Post(Clear);
+        if (Dispatcher.UIThread.CheckAccess()) ClearEngineNotifications();
+        else Dispatcher.UIThread.Post(ClearEngineNotifications);
     }
 
     /// <summary>顶栏直接放发送者（有群名就带上），正文交给浮窗。</summary>

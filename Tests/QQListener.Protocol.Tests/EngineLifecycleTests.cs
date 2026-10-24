@@ -10,6 +10,51 @@ namespace QQListener.Protocol.Tests;
 
 public sealed class EngineLifecycleTests
 {
+    [Fact]
+    public async Task LateAccountFailureCannotUnbindTheReplacementSession()
+    {
+        CoreController.ResetToDefault();
+        IReadOnlyList<int> pids = new[] { 11 };
+        var old = new FakeHost { HoldReceiveCleanup = true };
+        var replacement = new FakeHost();
+        var hosts = new Queue<FakeHost>([old, replacement]);
+        var router = new EngineCommandRouter();
+        var changes = 0;
+        router.SessionChanged += () => Interlocked.Increment(ref changes);
+        var settings = new QqListenerSettings { Engine = ListenerEngine.PMHQ };
+        var pipeline = new MessageEventPipeline(settings, new MessageRuleEvaluator(settings),
+            new QqListenerDiagnosticsState(), NullLogger<MessageEventPipeline>.Instance, TimeProvider.System);
+        using var runtime = new QqEngineService(settings, pipeline, new AlwaysOffClassProvider(), TimeProvider.System,
+            router, enumeratePids: () => Volatile.Read(ref pids), createPmhqHost: () => hosts.Dequeue());
+        try
+        {
+            await runtime.StartAsync(default);
+            await WaitUntil(() => old.Pid == 11);
+            // Capture the actual receiver task to await its entire exception handler, not a timing delay.
+            var session = typeof(QqEngineService).GetField("_current",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(runtime)!;
+            var receiver = (Task)session.GetType().GetField("ReceiveTask")!.GetValue(session)!;
+            old.AccountChanged = true;
+            await old.CleanupStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            old.Exited = true;
+            Volatile.Write(ref pids, new[] { 22 });
+            await WaitUntil(() => CoreRuntime.Get() is { State: CoreRuntimeState.Connected, Pid: 22 });
+            var newBindingChanges = Volatile.Read(ref changes);
+            old.ReleaseCleanup.TrySetResult();
+            await receiver.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(newBindingChanges, Volatile.Read(ref changes));
+            Assert.Equal(CoreRuntimeState.Connected, CoreRuntime.Get().State);
+            Assert.Equal(22, CoreRuntime.Get().Pid);
+        }
+        finally
+        {
+            old.ReleaseCleanup.TrySetResult();
+            await runtime.StopAsync(default);
+            CoreController.ResetToDefault();
+            CoreRuntime.ResetToDefault();
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -63,6 +108,9 @@ public sealed class EngineLifecycleTests
         public volatile bool Exited;
         public volatile bool AccountChanged;
         public volatile bool Disposed;
+        public bool HoldReceiveCleanup;
+        public readonly TaskCompletionSource CleanupStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource ReleaseCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IPmhqClient Client => this;
         public bool HasExited => Exited;
         public bool NativeInitialized => true;
@@ -74,8 +122,18 @@ public sealed class EngineLifecycleTests
             if (AccountChanged) throw new PmhqAccountChangedException();
             return Task.FromResult(new PmhqHealth(Pid, "10000", "") { IsLocalPipe = true });
         }
-        public Task ReceiveAsync(Action<CapturedMessage> receive, Action<PmhqHealth> onHealth, CancellationToken token)
-            => Task.Delay(Timeout.Infinite, token);
+        public async Task ReceiveAsync(Action<CapturedMessage> receive, Action<PmhqHealth> onHealth, CancellationToken token)
+        {
+            try { await Task.Delay(Timeout.Infinite, token); }
+            finally
+            {
+                if (HoldReceiveCleanup)
+                {
+                    CleanupStarted.TrySetResult();
+                    await ReleaseCleanup.Task;
+                }
+            }
+        }
         public byte[] Send(int pid, string command, byte[] body) => [];
         public void Dispose() => Disposed = true;
     }

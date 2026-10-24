@@ -72,6 +72,7 @@ internal static class Program
         if (sessionCheck)
         {
             VerifyNotificationSessions();
+            VerifyPreviewNotifications();
             return 0;
         }
         VerifyAutomationCompatibility();
@@ -119,6 +120,7 @@ internal static class Program
         VerifyHostNotificationTiming();
         VerifyNotificationQueue();
         VerifyNotificationSessions();
+        VerifyPreviewNotifications();
         VerifyScaledIslandAnchor();
         VerifyReplyActions(directory);
         VerifyReactionActions();
@@ -727,6 +729,62 @@ internal static class Program
         if (requests.Count != 1)
             throw new InvalidOperationException("实际出队时必须重新检查会话，旧摘要不得提交宿主");
         Console.WriteLine("Notification session: current / stale batch / mixed digest / UI dispatch / dequeue / reentrant switch OK");
+    }
+
+    private static void VerifyPreviewNotifications()
+    {
+        var router = new Core.EngineCommandRouter();
+        var settings = new QqListenerSettings { PerformanceMode = true };
+        using var notifier = new ClassIslandMessageNotifier(settings, engines: router);
+        var calls = 0;
+        void Show(ClassIsland.Core.Models.Notification.NotificationRequest request)
+        {
+            calls++;
+            request.Cancel();
+        }
+        foreach (var connected in new[] { false, true })
+        {
+            if (connected) router.Bind(Guid.NewGuid(), Oidb.QqControlApi.OverRequests((_, _, _) => []));
+            foreach (var kind in Enum.GetValues<MessagePreviewKind>())
+            {
+                var before = calls;
+                notifier.ShowPreviewAsync(kind, MessageImportance.Normal, Show, default).GetAwaiter().GetResult();
+                if (calls != before + 1) throw new InvalidOperationException("有无引擎连接均须显示内置测试提醒");
+                // A payload claiming to be a preview must not bypass the real-message entry point.
+                notifier.ShowAsync(MessagePreviewSamples.Create(kind, MessageImportance.Normal), Show, default).GetAwaiter().GetResult();
+                if (calls != before + 1) throw new InvalidOperationException("普通消息入口不能凭空会话或 preview 标签绕过校验");
+            }
+        }
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            try
+            {
+                notifier.ShowPreviewAsync(MessagePreviewKind.Text, MessageImportance.Normal, Show, cancelled.Token)
+                    .GetAwaiter().GetResult();
+                throw new InvalidOperationException("已取消的测试提醒不应继续显示");
+            }
+            catch (OperationCanceledException) { }
+        }
+        var requests = new List<ClassIsland.Core.Models.Notification.NotificationRequest>();
+        void Queue(ClassIsland.Core.Models.Notification.NotificationRequest request)
+        {
+            requests.Add(request);
+            SetHostState(request, ClassIsland.Core.Enums.Notification.NotificationState.Queued);
+        }
+        notifier.ShowPreviewAsync(MessagePreviewKind.Text, MessageImportance.Normal, Queue, default).GetAwaiter().GetResult();
+        notifier.ShowPreviewAsync(MessagePreviewKind.Media, MessageImportance.Normal, Queue, default).GetAwaiter().GetResult();
+        router.Bind(Guid.Empty, null);
+        if (requests.Count != 1 || requests[0].CancellationToken.IsCancellationRequested)
+            throw new InvalidOperationException("引擎会话结束不应中断独立的本地预览");
+        requests[0].Cancel();
+        Pump(TimeSpan.FromMilliseconds(400));
+        if (requests.Count != 2) throw new InvalidOperationException("会话变化后排队预览仍应继续显示");
+        settings.IsEnabled = false;
+        Pump(TimeSpan.FromMilliseconds(150));
+        if (!requests[1].CancellationToken.IsCancellationRequested)
+            throw new InvalidOperationException("停止监听仍须取消活动预览");
+        Console.WriteLine("Preview notifications: text / media / quote with and without engine; isolated queue / cancellation OK");
     }
 
     private sealed class FileHandler : HttpMessageHandler

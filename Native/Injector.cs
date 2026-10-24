@@ -67,6 +67,13 @@ public static class Injector
             throw new InjectionError("目标 PE 不是 DLL");
     }
 
+    public static void ValidateManualMapping(PortablePeImage pe)
+    {
+        ValidatePe(pe);
+        if (pe.Directory(PortablePeImage.ImageDirectoryEntryTls) is { VirtualAddress: not 0 } or { Size: not 0 })
+            throw new InjectionError("手动映射器不支持 TLS 映像；必须使用系统加载器");
+    }
+
     /// <summary>构建与目标基址匹配的完整内存映像；不调用任何平台 API。</summary>
     public static PreparedImage PrepareImage(
         PortablePeImage pe, byte[] raw, ulong baseAddress, ImportResolver resolver)

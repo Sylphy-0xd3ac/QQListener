@@ -52,6 +52,10 @@ DLL 中独立存在签名 RPC：初始化函数 `0x126e6` 在 `dump_sign` 标志
 
 空回包、群回执缺失、用私聊回执代替群回执三个用例在修复前均失败，修复后通过。私聊保留 SnowLuma 的非空 result=0 回执语义，没有增加上游未要求的序号限制。有效回执仍不能证明对端已经阅读或设备已收到消息。
 
+### 高：手动映射没有初始化 PMHQ 静态 TLS
+
+后续审查发现旧手动映射路径未初始化 PMHQ 的静态 TLS，足以阻断真实运行并改写宿主线程数据。已改为在目标 QQ 进程调用系统 `LoadLibraryW`；手动映射入口拒绝 TLS 映像。隔离 Wine probe 覆盖加载线程、已有线程和新线程，三者的宿主 TLS 均保持不变，详见 [TLS 证据](evidence/pmhq-tls-loader.json)。此前的初始化 probe 本身使用 LoadLibrary，并没有验证旧手动映射路径，这是原验证的缺口。系统加载行为及静态 TLS 的版本支持参照 [Microsoft LoadLibraryW 文档](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw)。
+
 ## 尚未解决的证据缺口
 
 1. **账号检查读取的是缓存。** `PmhqHost.CurrentAccount` 读取 `0xf31d8` 的 `LazyLock<Mutex<String>>`。发送 detour `0x21244` 更新该记录，序列化函数 `0x2450b` 读取它；这不是登录/退出状态查询。托管端会拒绝已观察到的 UIN 变化，但在原生缓存尚未刷新时，不能保证立即识别退出或换号。账号替身测试不证明真实刷新时机；退出登录、换号仍须重启 QQ。
@@ -60,7 +64,7 @@ DLL 中独立存在签名 RPC：初始化函数 `0x126e6` 在 `dump_sign` 标志
 
 ## 验证
 
-- 初次签名审查的 Release 全量测试为 635 项通过，记录前缀 `pmhq-sign-reviewed`。通知会话与替代进程重连修复后为 641 项通过，0 失败、0 跳过（协议/生命周期 376，模型/服务 265），记录前缀 `session-review-fixes`。
+- 初次签名审查的 Release 全量测试为 635 项通过，记录前缀 `pmhq-sign-reviewed`。TLS 加载、迟到接收任务及预览修复后为 650 项通过，0 失败、0 跳过（协议/生命周期 383，模型/服务 267），记录前缀 `tls-session-preview-fixes`。
 - 签名审查中的缺陷回归分别证明修复前失败、修复后通过；后续会话修复见[双引擎审查](dual-engine.md)。
 - 原生初始化、anchor 和命令失败路径的既有隔离证据见 [pmhq-local-runtime.json](evidence/pmhq-local-runtime.json)。本次未把隔离结果扩展为真实 QQ 签名结论。
 - 审查输入哈希和原生地址见 [静态证据索引](evidence/pmhq-signing-static.json)。更广范围的改动见 [双引擎审查](dual-engine.md)。

@@ -33,7 +33,7 @@ public static class ManualMapInjector
 
         var raw = File.ReadAllBytes(dllPath);
         var pe = PortablePeImage.Parse(raw);
-        Injector.ValidatePe(pe);
+        Injector.ValidateManualMapping(pe);
 
         lock (CacheGate) _cache = (dllPath, writeTimeUtc, raw, pe);
         return (raw, pe);

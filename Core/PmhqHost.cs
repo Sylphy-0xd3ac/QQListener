@@ -13,7 +13,7 @@ public sealed class PmhqHost : IPmhqHost
     private readonly object _gate = new();
     private Process? _qq;
     private WindowsProcess? _memory;
-    private MapHandle? _image;
+    private ulong _moduleBase;
     public IPmhqClient? Client { get; private set; }
     public bool HasExited
     {
@@ -26,8 +26,8 @@ public sealed class PmhqHost : IPmhqHost
         {
             lock (_gate)
             {
-                if (!OperatingSystem.IsWindows() || _memory is null || _image is null || _qq?.HasExited != false) return false;
-                try { return _memory.Read(_image.Value.Base + 0xf56f1, 1)[0] != 0; }
+                if (!OperatingSystem.IsWindows() || _memory is null || _moduleBase == 0 || _qq?.HasExited != false) return false;
+                try { return _memory.Read(_moduleBase + 0xf56f1, 1)[0] != 0; }
                 catch (InjectionError) { return false; }
             }
         }
@@ -39,10 +39,10 @@ public sealed class PmhqHost : IPmhqHost
     {
         lock (_gate)
         {
-            if (!OperatingSystem.IsWindows() || _memory is null || _image is null || _qq?.HasExited != false) return "";
+            if (!OperatingSystem.IsWindows() || _memory is null || _moduleBase == 0 || _qq?.HasExited != false) return "";
             // v9.0.6 LazyLock<Mutex<String>>: the DLL's last observed UIN, not a live login query.
             // Read stable snapshots; never trust a pointer while the native writer owns its lock.
-            var address = _image.Value.Base + 0xf31d8;
+            var address = _moduleBase + 0xf31d8;
             for (var attempt = 0; attempt < 8; attempt++)
             {
                 var before = _memory.Read(address, 48);
@@ -86,8 +86,9 @@ public sealed class PmhqHost : IPmhqHost
             if (!WindowsQqProcessSource.IsStillMainQqProcess(qqPid) || _qq.HasExited
                 || _qq.StartTime.ToUniversalTime().Ticks != started)
                 throw new IOException("QQ 进程已变化，请重新检查");
-            _image = ManualMapInjector.Inject(qqPid, Path.Combine(_bundle.BinaryDirectory, "pmhq.dll"));
             _memory = new WindowsProcess(qqPid);
+            // PMHQ uses Rust static TLS. Only the system loader may initialize this module.
+            _moduleBase = _memory.LoadLibraryFile(Path.Combine(_bundle.BinaryDirectory, "pmhq.dll"));
         }
         catch { Dispose(); throw; }
     }
@@ -101,7 +102,8 @@ public sealed class PmhqHost : IPmhqHost
             _memory = null;
             _qq?.Dispose(); _qq = null;
             // Live callbacks remain until QQ exits. EngineSwitchGuard requires that restart.
-            _image = null;
+            // Do not FreeLibrary: native callbacks remain registered until QQ exits.
+            _moduleBase = 0;
         }
     }
 }
