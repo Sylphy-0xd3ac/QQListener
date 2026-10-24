@@ -46,9 +46,9 @@ dotnet build QQListener.csproj -c Release -p:CreateCipx=true -p:RestoreLockedMod
 
 ## 发布校验
 
-发布版本使用四段式版本号，并同步维护以下位置：
+对外发布使用 SemVer（例如 `2.3.0-beta.1`）。ClassIsland 清单与程序集使用四段数字版本（此版本为 `2.3.0.1`），前三段与发布版本一致；第四段是同一版本系列内递增的构建号，后续测试版和正式版均递增，不归零。同步维护以下位置：
 
-- `Directory.Build.props` 中的 `QQListenerVersion`。
+- `Directory.Build.props` 中的数字版本 `QQListenerVersion` 与发布版本 `QQListenerReleaseVersion`。
 - `manifest.yml` 中的 `version`。
 - `CHANGELOG.md` 的最新条目。
 - `Tools/QQListener.ReleaseVerifier/ReleaseMetadataVerifier.cs` 中的预期版本及相关测试。
@@ -59,18 +59,20 @@ dotnet build QQListener.csproj -c Release -p:CreateCipx=true -p:RestoreLockedMod
 dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj -c Release --no-build --no-restore -- --root . --configuration Release
 ```
 
-验证标签时追加 `--tag <四段式版本号>`。校验包括版本一致性、包结构、内嵌程序集及校验和。历史标签保留，不通过重写标签修正旧版本清单。
+验证标签时追加 `--tag <SemVer 发布版本>`。校验包括版本一致性、包结构、内嵌程序集及校验和。历史标签保留，不通过重写标签修正旧版本清单。
 
 ## 自动发布
 
-向远端推送与清单一致的四段式版本标签即可发布，例如：
+向远端推送与 `QQListenerReleaseVersion` 一致的版本标签即可发布，例如：
 
 ```sh
-git tag 2.2.0.0
-git push origin 2.2.0.0
+git tag 2.3.0-beta.1
+git push origin 2.3.0-beta.1
 ```
 
 Windows 和 macOS 的构建、测试及界面验证全部通过后，发布任务下载同一次运行中已校验的 Windows 安装包，上传 `QQListener.cipx` 和 `checksums.md`。发布说明取自 `CHANGELOG.md` 中对应版本的条目，并附加 ClassIsland 识别所需的 `CLASSISLAND_PKG_MD5` 校验标记。
+
+带预发布标识的标签会发布为 GitHub Prerelease，不替换最新稳定版；正式版才更新 Latest。历史四段式标签仍可识别。
 
 附件上传完成前 Release 保持草稿；失败后可重跑工作流继续发布。已经公开的 Release 不会被重跑覆盖。普通分支推送、Pull Request 和手动触发只执行检查，不公开 Release。
 

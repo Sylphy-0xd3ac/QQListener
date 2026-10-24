@@ -118,7 +118,7 @@ public sealed class WorkflowTests
             var branches = Assert.IsType<YamlSequenceNode>(Value(Mapping(triggers, eventName), "branches"));
             Assert.Equal("main", Assert.IsType<YamlScalarNode>(Assert.Single(branches.Children)).Value);
         }
-        Assert.Contains("'[0-9]*.[0-9]*.[0-9]*.[0-9]*'", yaml, StringComparison.Ordinal);
+        Assert.Contains("'[0-9]*.[0-9]*.[0-9]*'", yaml, StringComparison.Ordinal);
         Assert.Contains("cipx/QQListener.cipx", yaml, StringComparison.Ordinal);
         Assert.Contains("cipx/checksums.md", yaml, StringComparison.Ordinal);
         Assert.Contains("artifacts/test-results/*.trx", yaml, StringComparison.Ordinal);

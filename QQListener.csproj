@@ -5,10 +5,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <EnableDynamicLoading>True</EnableDynamicLoading>
-        <Version>$(QQListenerVersion)</Version>
+        <Version>$(QQListenerReleaseVersion)</Version>
         <AssemblyVersion>$(QQListenerVersion)</AssemblyVersion>
         <FileVersion>$(QQListenerVersion)</FileVersion>
-        <InformationalVersion>$(QQListenerVersion)</InformationalVersion>
+        <InformationalVersion>$(QQListenerReleaseVersion)</InformationalVersion>
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     </PropertyGroup>
 
     <ItemGroup>

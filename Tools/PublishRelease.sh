@@ -11,9 +11,20 @@ if [[ ${GITHUB_EVENT_NAME:-} != push || ${GITHUB_REF_TYPE:-} != tag ]]; then
 fi
 
 version_component='(0|[1-9][0-9]*)'
-if [[ ! $RELEASE_TAG =~ ^${version_component}\.${version_component}\.${version_component}\.${version_component}$ ]]; then
-    printf '%s\n' 'Release tags must use the canonical four-part version.' >&2
+prerelease_identifier='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+semver_pattern="^${version_component}\.${version_component}\.${version_component}(-${prerelease_identifier}(\.${prerelease_identifier})*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$"
+legacy_pattern="^${version_component}\.${version_component}\.${version_component}\.${version_component}$"
+release_title="QQListener $RELEASE_TAG"
+if [[ $RELEASE_TAG =~ $legacy_pattern ]]; then
+    release_title="QQListener ${RELEASE_TAG%.0}"
+elif [[ ! $RELEASE_TAG =~ $semver_pattern ]]; then
+    printf '%s\n' 'Release tags must use canonical SemVer or a legacy four-part version.' >&2
     exit 1
+fi
+release_flags=(--prerelease=false --latest)
+version_without_metadata="${RELEASE_TAG%%+*}"
+if [[ $version_without_metadata == *-* ]]; then
+    release_flags=(--prerelease --latest=false)
 fi
 
 package_directory="${1:-release}"
@@ -56,12 +67,12 @@ if release_state="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -
         exit 1
     fi
     gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
-        --title "QQListener ${RELEASE_TAG%.0}" --notes-file "$notes_file"
+        --title "$release_title" --notes-file "$notes_file" "${release_flags[@]}"
 else
     gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
-        --title "QQListener ${RELEASE_TAG%.0}" --notes-file "$notes_file"
+        --title "$release_title" --notes-file "$notes_file" "${release_flags[@]}"
 fi
 
 gh release upload "$RELEASE_TAG" "$package_directory/QQListener.cipx" "$package_directory/checksums.md" \
     --repo "$GITHUB_REPOSITORY" --clobber
-gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${release_flags[@]}"

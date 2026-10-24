@@ -41,6 +41,16 @@ run_case() {
     local ref_type=tag
     case "$scenario" in
         invalid_tag) tag='2.2.0.0;echo injected' ;;
+        leading_zero) tag='2.3.0-beta.01' ;;
+        invalid_semver) tag='2.3.0-' ;;
+        beta|stable|stable_metadata)
+            case "$scenario" in
+                beta) tag=2.3.0-beta.1 ;;
+                stable) tag=2.3.0 ;;
+                stable_metadata) tag=2.3.0+build-test ;;
+            esac
+            printf '## [%s]\n\n- Current release.\n\n## [2.2.0.0]\n- Previous release.\n' "$tag" > "$working_directory/CHANGELOG.md"
+            ;;
         branch_push) ref_type=branch ;;
         pull_request) event=pull_request ;;
         missing_asset) : > "$working_directory/release/checksums.md" ;;
@@ -62,7 +72,7 @@ run_case() {
         exit 1
     fi
     case "$scenario" in
-        new|draft|upload_failure|published)
+        new|draft|upload_failure|published|beta|stable|stable_metadata)
             grep -q 'Current release.' "$working_directory/release/release-notes.md"
             grep -q 'CLASSISLAND_PKG_MD5' "$working_directory/release/release-notes.md"
             if grep -q 'Previous release.' "$working_directory/release/release-notes.md"; then exit 1; fi
@@ -73,11 +83,20 @@ run_case() {
         new)
             grep -q '^release create .*--draft --verify-tag' "$working_directory/calls.log"
             grep -q '^release upload .*QQListener.cipx release/checksums.md' "$working_directory/calls.log"
-            grep -q '^release edit .*--draft=false --latest' "$working_directory/calls.log"
+            grep -q '^release edit .*--draft=false --prerelease=false --latest' "$working_directory/calls.log"
+            ;;
+        beta)
+            grep -q '^release create .*--prerelease --latest=false' "$working_directory/calls.log"
+            grep -q '^release edit .*--draft=false --prerelease --latest=false' "$working_directory/calls.log"
+            if grep -Eq -- '--latest( |$)' "$working_directory/calls.log"; then exit 1; fi
+            ;;
+        stable|stable_metadata)
+            grep -q '^release edit .*--draft=false --prerelease=false --latest$' "$working_directory/calls.log"
+            grep -q -- "--title QQListener $tag --notes-file" "$working_directory/calls.log"
             ;;
         draft)
             if grep -q '^release create ' "$working_directory/calls.log"; then exit 1; fi
-            grep -q '^release edit .*--draft=false --latest' "$working_directory/calls.log"
+            grep -q '^release edit .*--draft=false --prerelease=false --latest' "$working_directory/calls.log"
             ;;
         published) [[ $(wc -l < "$working_directory/calls.log") -eq 1 ]] ;;
         upload_failure)
@@ -98,3 +117,9 @@ run_case missing_asset 1
 run_case invalid_checksum 1
 run_case missing_notes 1
 run_case empty_notes 1
+
+run_case beta 0
+run_case stable 0
+run_case stable_metadata 0
+run_case leading_zero 1
+run_case invalid_semver 1

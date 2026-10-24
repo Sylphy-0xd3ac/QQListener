@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [2.3.0-beta.1] - 2026-10-24
+
+此版本为预发布，插件内部版本为 `2.3.0.1`。默认仍使用 SnowLuma；PMHQ 需手动启用，尚未完成真实 Windows QQ 的签名与投递验收。
 
 - 调试区增加 SnowLuma / PMHQ 引擎选择，PMHQ 需确认实验性提示；切换时等待旧 QQ 进程退出。
 - 内置 PMHQ v9.0.6 本机内核，直接通过命名管道接入 QQ，共用消息筛选、附件、回复和 ClassIsland 提醒链路；无需启动凭证或 manager，不再分发和启动原 Rust EXE。

@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
-    <QQListenerVersion>2.2.0.0</QQListenerVersion>
+    <QQListenerVersion>2.3.0.1</QQListenerVersion>
+    <QQListenerReleaseVersion>2.3.0-beta.1</QQListenerReleaseVersion>
     <ClassIslandPluginSdkVersion>2.1.0.1</ClassIslandPluginSdkVersion>
     <QQListenerTargetFramework Condition="'$(CreateCipx)' == 'true'">net8.0-windows10.0.19041.0</QQListenerTargetFramework>
     <EnableWindowsTargeting Condition="'$(CreateCipx)' == 'true'">true</EnableWindowsTargeting>

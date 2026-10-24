@@ -16,7 +16,7 @@ namespace QQListener.ReleaseVerifier;
 public static class ReleaseMetadataVerifier
 {
     private const string TargetFramework = "net8.0-windows10.0.19041.0";
-    private const string ExpectedReleaseVersion = "2.2.0.0";
+    private const string ExpectedReleaseVersion = "2.3.0.1";
     private const long MaxManifestBytes = 1024 * 1024;
     private const long MaxCipxBytes = 256L * 1024 * 1024;
     private const long MaxChecksumsBytes = 1024L * 1024;
@@ -40,6 +40,9 @@ public static class ReleaseMetadataVerifier
     private static readonly Regex ChecksumMarkerPattern = new(
         @"<!--\s*CLASSISLAND_PKG_MD5\s+(\{.*?\})\s*-->",
         RegexOptions.Singleline | RegexOptions.CultureInvariant);
+    private static readonly Regex ReleaseVersionPattern = new(
+        @"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\z",
+        RegexOptions.CultureInvariant);
 
     internal static Func<string> TemporaryDirectoryFactory { get; set; } = CreateTemporaryDirectory;
 
@@ -127,7 +130,9 @@ public static class ReleaseMetadataVerifier
                 projectVersion,
                 dll.AssemblyVersion,
                 dll.FileVersion,
-                tagVersion).Errors);
+                tagVersion: null).Errors);
+            Try(errors, "release", () => ValidateReleaseMetadata(
+                Path.Combine(root, "Directory.Build.props"), projectVersion, dll, tagVersion));
             if (!string.Equals(dll.SimpleName, "QQListener", StringComparison.Ordinal))
             {
                 errors.Add("build DLL assembly name is not 'QQListener'.");
@@ -135,7 +140,7 @@ public static class ReleaseMetadataVerifier
         }
         else if (tagVersion is not null)
         {
-            ValidateCanonical(errors, "tag", tagVersion);
+            if (!ReleaseVersionPattern.IsMatch(tagVersion)) errors.Add("tag must use canonical SemVer.");
         }
 
         return new VerificationResult(errors);
@@ -205,6 +210,8 @@ public static class ReleaseMetadataVerifier
             RequireExpectedReleaseVersion(errors, "project", projectVersion);
             RequireExpectedReleaseVersion(errors, "assembly", package.Dll.AssemblyVersion);
             RequireExpectedReleaseVersion(errors, "file", package.Dll.FileVersion);
+            Try(errors, "release", () => ValidateReleaseMetadata(
+                Path.Combine(root, "Directory.Build.props"), projectVersion, package.Dll, null));
             if (!string.Equals(package.Manifest.EntranceAssembly, "QQListener.dll", StringComparison.Ordinal))
             {
                 errors.Add("archive manifest entranceAssembly must be exactly 'QQListener.dll'.");
@@ -269,6 +276,24 @@ public static class ReleaseMetadataVerifier
         var value = elements[0].Value;
         EnsureCanonical("project", value);
         return value;
+    }
+
+    private static void ValidateReleaseMetadata(string path, string numericVersion, DllMetadata dll, string? tag)
+    {
+        var elements = XDocument.Load(path).Descendants()
+            .Where(e => e.Name.LocalName == "QQListenerReleaseVersion").ToArray();
+        if (elements.Length != 1 || elements[0].AncestorsAndSelf().Any(e => e.Attribute("Condition") is not null))
+            throw new FormatException("project must contain exactly one unconditional QQListenerReleaseVersion.");
+        var release = elements[0].Value;
+        var match = ReleaseVersionPattern.Match(release);
+        if (!match.Success) throw new FormatException("release version must use canonical SemVer.");
+        var core = $"{match.Groups[1].Value}.{match.Groups[2].Value}.{match.Groups[3].Value}";
+        if (!numericVersion.StartsWith(core + ".", StringComparison.Ordinal))
+            throw new FormatException("release version core must match the numeric plugin version.");
+        if (!string.Equals(dll.InformationalVersion, release, StringComparison.Ordinal))
+            throw new FormatException($"DLL informational version '{dll.InformationalVersion}' does not match release '{release}'.");
+        if (tag is not null && !string.Equals(tag, release, StringComparison.Ordinal))
+            throw new FormatException($"tag '{tag}' does not match release '{release}'.");
     }
 
     private static PackageMetadata ReadPackage(string cipxPath, List<string> errors)
@@ -495,7 +520,8 @@ public static class ReleaseMetadataVerifier
                           ?? throw new FormatException("DLL file version is missing.");
         EnsureCanonical("assembly", assemblyVersion);
         EnsureCanonical("file", fileVersion);
-        return new DllMetadata(assembly.Name ?? "", assemblyVersion, fileVersion);
+        return new DllMetadata(assembly.Name ?? "", assemblyVersion, fileVersion,
+            FileVersionInfo.GetVersionInfo(path).ProductVersion ?? "");
     }
 
     private static void VerifyChecksum(string cipxPath, string checksumsPath)
@@ -917,7 +943,7 @@ public static class ReleaseMetadataVerifier
     }
 
     private sealed record ManifestMetadata(string Version, string EntranceAssembly);
-    private sealed record DllMetadata(string SimpleName, string AssemblyVersion, string FileVersion);
+    private sealed record DllMetadata(string SimpleName, string AssemblyVersion, string FileVersion, string InformationalVersion);
     private sealed record PackageMetadata(ManifestMetadata Manifest, DllMetadata Dll);
     private sealed record ArchiveDirectoryMetadata(ulong EntryCount);
     private sealed record ClassicEocdMetadata(
