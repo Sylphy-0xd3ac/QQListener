@@ -20,7 +20,12 @@ cl /nologo /TC /std:c17 /Od /W3 "$source" /Fe:"$exe" /Fo:"$output/tls-loader-pro
 & $env:ComSpec /c $compile
 if ($LASTEXITCODE -ne 0) { throw 'Native fixture compilation failed' }
 # The probe explicitly sets PMHQ_SRDI_TEST. It never attaches to QQ or installs live hooks.
-& $exe (Join-Path $output 'pmhq.dll') 2>&1 | Tee-Object -FilePath (Join-Path $output 'result.txt')
+& $exe (Join-Path $output 'upstream.dll') 2>&1 | Tee-Object -FilePath (Join-Path $output 'result.txt')
+if ($LASTEXITCODE -ne 0) { throw "Official upstream DLL loader probe failed: $LASTEXITCODE" }
+$legacy = & $exe (Join-Path $output 'legacy.dll') 2>&1
+$legacy | Tee-Object -Append -FilePath (Join-Path $output 'result.txt')
+if ($LASTEXITCODE -ne 4 -or ($legacy -join ' ') -notmatch 'LoadLibraryW failed=193') { throw 'Expected the legacy PE layout to fail with Win32 193' }
+& $exe (Join-Path $output 'pmhq.dll') 2>&1 | Tee-Object -Append -FilePath (Join-Path $output 'result.txt')
 if ($LASTEXITCODE -ne 0) { throw "PMHQ Windows loader/TLS probe failed: $LASTEXITCODE" }
 $env:QQLISTENER_PMHQ_FIXTURE = Join-Path $output 'pmhq.dll'
 dotnet test (Join-Path $repoRoot 'Tests/QQListener.Protocol.Tests') --configuration Release --no-build --no-restore --filter FullyQualifiedName~WindowsLoadsPinnedPmhqThroughTheProductionRemoteCallPath --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -Append -FilePath (Join-Path $output 'result.txt')

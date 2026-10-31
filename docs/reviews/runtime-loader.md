@@ -25,3 +25,11 @@ SnowLuma 官方 bridge 使用 unload 后检查管道消失的流程。插件只�
 `Tools/QQListener.LoaderVerifier` 从实际 CIPX 安装核心，在独立上下文中解析 DI、构造设置页并读取 Avalonia 图标。界面预览另行检查下载窗口及安装向导。
 
 这些检查不能证明真实 Windows QQ 中的 PMHQ 初始化、签名或投递成功。实际 `LoadLibraryW` 故障仍需结合用户机器上的完整错误码和日志诊断，不能将错误码改进称为已经验证修复了所有加载故障。
+
+## Windows 193 reproduction and PE correction
+
+Windows run 41211008156 rejected the previous reconstructed DLL with `LoadLibraryW failed=193`; its SHA-256 matched the reviewed `2c667c5b...` file. Wine accepted that same file and passed the TLS fixture. That difference invalidates using Wine success as evidence of Windows loadability.
+
+The merged image left gaps at RVA `0x102000..0x103000` (payload header space) and `0x105000..0x106000` (omitted payload debug section). Microsoft's [PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-table-section-headers) requires image section VAs to be ascending and adjacent. The merger now extends preceding virtual zero-fill spans to cover those gaps; it preserves all code/data RVAs, original raw section bytes and TLS metadata.
+
+The corrected runtime is `9.0.6-local-pipe.2`. The former delta remains only as a negative CI fixture. The native check loads the official DLL, requires error 193 from the old reconstructed layout, then checks TLS and the production remote-call path with the corrected DLL. Only supported versions appear in the distribution catalog. Existing local-pipe.1 installations are upgraded to the new minimum runtime rather than reused.

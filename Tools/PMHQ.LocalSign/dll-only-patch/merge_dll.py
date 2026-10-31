@@ -147,6 +147,17 @@ for index, rva, size in [(0,export_rva,export_size),(1,import_rva,len(imports)),
     directory = original.OPTIONAL_HEADER.DATA_DIRECTORY[index]
     set_field(directory,'VirtualAddress','<I',rva)
     set_field(directory,'Size','<I',size)
+# Windows SEC_IMAGE requires adjacent, ascending section virtual addresses.
+# Payload headers and omitted debug sections leave holes that Wine tolerates.
+# Extend preceding virtual zero-fill spans without moving any code/data RVA.
+checked = pefile.PE(data=result)
+for previous, following in zip(checked.sections, checked.sections[1:]):
+    end = align(previous.VirtualAddress + max(previous.Misc_VirtualSize, previous.SizeOfRawData),
+                checked.OPTIONAL_HEADER.SectionAlignment)
+    assert following.VirtualAddress >= end, 'Overlapping image sections'
+    if following.VirtualAddress > end:
+        struct.pack_into('<I', result, previous.get_field_absolute_offset('Misc_VirtualSize'),
+                         following.VirtualAddress - previous.VirtualAddress)
 checked = pefile.PE(data=result)
 set_field(original.OPTIONAL_HEADER, 'CheckSum', '<I', checked.generate_checksum())
 out = args.output

@@ -10,11 +10,11 @@ printf core > "$fixture/release/QQListener.Core.zip"
 printf bundled > "$fixture/release/QQListener.cipx"
 printf loader > "$fixture/release/QQListener.Download.cipx"
 printf checksums > "$fixture/release/checksums.md"
-printf patch > "$fixture/Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch"
+printf patch > "$fixture/Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.2.patch"
 core_hash=$(sha256sum "$fixture/release/QQListener.Core.zip" | cut -d' ' -f1)
-patch_hash=$(sha256sum "$fixture/Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch" | cut -d' ' -f1)
+patch_hash=$(sha256sum "$fixture/Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.2.patch" | cut -d' ' -f1)
 jq -n --arg hash "$core_hash" '{Version:"2.3.0-beta.2",LoaderAbi:1,BuildNumber:1,Package:{Url:("https://github.com/Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/QQListener.Core-"+$hash+".zip"),Sha256:$hash,Size:4}}' > "$fixture/release/core-release.json"
-jq --arg hash "$patch_hash" '.Patch.Sha256=$hash | .Patch.Size=5 | .Patch.Url="https://github.com/Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/test.patch"' "$source_root/Distribution/pmhq/9.0.6-local-pipe.1.json" > "$fixture/Distribution/pmhq/test.json"
+jq --arg hash "$patch_hash" '.Patch.Sha256=$hash | .Patch.Size=5 | .Patch.Url="https://github.com/Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/test.patch"' "$source_root/Distribution/pmhq/9.0.6-local-pipe.2.json" > "$fixture/Distribution/pmhq/test.json"
 cat > "$fixture/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail

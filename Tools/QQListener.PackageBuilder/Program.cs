@@ -7,7 +7,7 @@ if (args.Length == 3 && args[0] == "--pmhq-fixture")
 {
     var fixtureRoot = Path.GetFullPath(args[1]);
     var release = JsonSerializer.Deserialize<PmhqRelease>(File.ReadAllBytes(Path.Combine(fixtureRoot,
-        "Distribution/pmhq/9.0.6-local-pipe.1.json")), DistributionCatalog.JsonOptions)!;
+        "Distribution/pmhq/9.0.6-local-pipe.2.json")), DistributionCatalog.JsonOptions)!;
     DistributionCatalog.Validate(release);
     var archiveBytes = await new DistributionClient().AssetAsync(release.Archive, null, default);
     using var archive = new ZipArchive(new MemoryStream(archiveBytes));
@@ -24,7 +24,22 @@ if (args.Length == 3 && args[0] == "--pmhq-fixture")
     var result = QQListener.Core.BinaryDelta.Apply(original, patch);
     if (result.Length != release.OutputSize || !DistributionClient.HashMatches(result, release.OutputSha256))
         throw new IOException("Unexpected reconstructed DLL hash.");
+    using (var image = new System.Reflection.PortableExecutable.PEReader(new MemoryStream(result)))
+    {
+        var header = image.PEHeaders.PEHeader ?? throw new IOException("Not a PE image.");
+        var expected = (header.SizeOfHeaders + header.SectionAlignment - 1) & -header.SectionAlignment;
+        foreach (var section in image.PEHeaders.SectionHeaders)
+        {
+            if (section.VirtualAddress != expected) throw new IOException("Non-adjacent PE sections violate the Windows image format.");
+            expected = (section.VirtualAddress + Math.Max(section.VirtualSize, section.SizeOfRawData)
+                        + header.SectionAlignment - 1) & -header.SectionAlignment;
+        }
+        if (expected != header.SizeOfImage) throw new IOException("PE image size mismatch.");
+    }
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[2]))!);
+    File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[2]))!, "upstream.dll"), original);
+    var legacyPatch = File.ReadAllBytes(Path.Combine(fixtureRoot, "Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch"));
+    File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[2]))!, "legacy.dll"), QQListener.Core.BinaryDelta.Apply(original, legacyPatch));
     File.WriteAllBytes(args[2], result);
     Console.WriteLine("Pinned PMHQ native fixture verified: " + release.OutputSha256);
     return;

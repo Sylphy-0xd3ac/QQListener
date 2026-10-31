@@ -7,12 +7,12 @@ namespace QQListener.Core;
 
 public sealed class PmhqBundle
 {
-    public const string Version = "9.0.6-local-pipe.1";
-    public const string DllHash = "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b";
+    public const string Version = "9.0.6-local-pipe.2";
+    public const string DllHash = "ffb7e841a811ebead258730d7bb6f71c06a7e07e776ca1128c054bececa6c004";
     public const string OriginalHash = "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4";
     public const string DownloadUrl = "https://github.com/linyuchen/PMHQ/releases/download/v9.0.6/pmhq-win-x64.zip";
     public const string ArchiveHash = "64da6159976aee0eb1b67bc0c82ca3c540d9bfd4a41cc17d5a308e24dbfd7587";
-    public const string PatchHash = "6eea307e7f5495093bff6ab920de12afd627d287581b662f99d497ea5a522995";
+    public const string PatchHash = "46b1b076f0d97bb1c2f877a19ab92313351111a2dbdfe5d480b2a5002bec9dbc";
     private const int MaxDownloadBytes = 32 * 1024 * 1024;
     private static readonly HttpClient SharedHttp = new();
     private static readonly SemaphoreSlim InstallGate = new(1, 1);
@@ -26,7 +26,7 @@ public sealed class PmhqBundle
     public PmhqLayout Layout => Release?.Layout ?? new(0xf56f1, 0xf31d8);
     private readonly string _root;
     public PmhqBundle(string nativeDirectory, HttpClient? httpClient = null)
-        : this(nativeDirectory, ReadInstalledRelease(nativeDirectory) ?? PinnedRelease, httpClient) { }
+        : this(nativeDirectory, ResolveRelease(nativeDirectory), httpClient) { }
 
     public PmhqBundle(string nativeDirectory, PmhqRelease release, HttpClient? httpClient = null)
         : this(nativeDirectory, httpClient ?? SharedHttp,
@@ -36,6 +36,15 @@ public sealed class PmhqBundle
         DistributionCatalog.Validate(release);
         if (release.HostAbi != DistributionCatalog.HostAbi) throw new IOException("请先更新 QQListener 核心");
         Release = release;
+    }
+
+    private static PmhqRelease ResolveRelease(string directory)
+    {
+        var installed = ReadInstalledRelease(directory);
+        var minimum = PinnedRelease;
+        // local-pipe.1 has invalid PE section gaps on Windows; never reuse it.
+        return installed is null || ReleaseVersionComparer.Instance.Compare(installed.RuntimeVersion, minimum.RuntimeVersion) < 0
+            ? minimum : installed;
     }
 
     public static PmhqRelease PinnedRelease

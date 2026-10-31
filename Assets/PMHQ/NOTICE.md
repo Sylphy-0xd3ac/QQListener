@@ -3,7 +3,7 @@
 The Windows x64 runtime is reconstructed on first use from the original PMHQ v9.0.6 DLL from
 <https://github.com/linyuchen/PMHQ/releases/tag/v9.0.6>. The original code is a
 third-party component and is not covered by QQListener's MIT license. The plugin
-downloads a 41,788-byte binary delta from the signed QQListener distribution catalog;
+downloads a 41,798-byte binary delta from the signed QQListener distribution catalog;
 neither the delta nor a complete PMHQ DLL is embedded in the plugin.
 
 QQListener adds a local initialization entry wrapper and uses its own managed
@@ -18,18 +18,18 @@ The loaded module remains resident until QQ exits; it is not hot-unloaded.
 
 | File | SHA-256 |
 | --- | --- |
-| Reconstructed pmhq.dll | 2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b |
+| Reconstructed pmhq.dll | ffb7e841a811ebead258730d7bb6f71c06a7e07e776ca1128c054bececa6c004 |
 | Original upstream pmhq.dll | 345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4 |
 | Official pmhq-win-x64.zip | 64da6159976aee0eb1b67bc0c82ca3c540d9bfd4a41cc17d5a308e24dbfd7587 |
-| Downloaded delta | 6eea307e7f5495093bff6ab920de12afd627d287581b662f99d497ea5a522995 |
+| Downloaded delta | 46b1b076f0d97bb1c2f877a19ab92313351111a2dbdfe5d480b2a5002bec9dbc |
 
 The fixed asset URL is
 <https://github.com/linyuchen/PMHQ/releases/download/v9.0.6/pmhq-win-x64.zip>.
 Each supported release pins all four hashes and its host ABI/layout in Distribution/pmhq/.
 Installation rejects mismatches and only upgrades when the upstream version has a
 matching catalog entry; it atomically publishes the DLL after verification. Verified local DLLs
-and the original cache can be reused offline. The reconstructed file is byte-for-byte
-identical to the DLL shipped in QQListener 2.3.0-beta.1.
+and the original cache can be reused offline. The local-pipe.2 variant fixes section virtual-address gaps in the earlier DLL;
+Windows rejected that layout with error 193 although Wine accepted it.
 
 The wrapper source is in Tools/PMHQ.LocalSign/dll-only-patch/local_pipe.c.
 Build instructions and isolated probe sources are in Tools/PMHQ.LocalSign/.
