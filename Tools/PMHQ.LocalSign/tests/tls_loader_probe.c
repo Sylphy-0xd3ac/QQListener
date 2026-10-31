@@ -16,6 +16,24 @@ static volatile LONG failures;
 static _Thread_local unsigned char host_tls[512];
 extern DWORD _tls_index;
 
+static LONG WINAPI report_fault(EXCEPTION_POINTERS *fault) {
+    static LONG reports;
+    if(fault->ExceptionRecord->ExceptionCode!=EXCEPTION_ACCESS_VIOLATION
+        || InterlockedIncrement(&reports)>4)return EXCEPTION_CONTINUE_SEARCH;
+    MEMORY_BASIC_INFORMATION memory={0};
+    VirtualQuery(fault->ExceptionRecord->ExceptionAddress,&memory,sizeof(memory));
+    CONTEXT *c=fault->ContextRecord;
+    fprintf(stderr,"native_fault code=%08lx rva=%llx operation=%llu target=%llx protect=%lx "
+        "rax=%llx rcx=%llx rdx=%llx r8=%llx r9=%llx rsp=%llx\n",
+        fault->ExceptionRecord->ExceptionCode,
+        (unsigned long long)((uintptr_t)fault->ExceptionRecord->ExceptionAddress-(uintptr_t)memory.AllocationBase),
+        (unsigned long long)fault->ExceptionRecord->ExceptionInformation[0],
+        (unsigned long long)fault->ExceptionRecord->ExceptionInformation[1],memory.Protect,
+        c->Rax,c->Rcx,c->Rdx,c->R8,c->R9,c->Rsp);
+    fflush(stderr);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 static void check_tls(unsigned id) {
     unsigned char before[sizeof(host_tls)], output[128]={0};
     memset(host_tls,0x30+id,sizeof(host_tls));
@@ -57,6 +75,7 @@ static DWORD WINAPI deadline(void *unused) {
 }
 int wmain(int argc,wchar_t **argv) {
     if(argc!=2)return 2;
+    AddVectoredExceptionHandler(1,report_fault);
     SetEnvironmentVariableW(L"PMHQ_SRDI_TEST",L"1");
     loaded=CreateEventW(NULL,TRUE,FALSE,NULL);
     finish=CreateEventW(NULL,TRUE,FALSE,NULL);
