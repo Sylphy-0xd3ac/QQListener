@@ -35,6 +35,26 @@ public sealed class RemoteLibraryLoaderTests
     }
 
     [Fact]
+    public void WindowsLoadsPinnedPmhqThroughTheProductionRemoteCallPath()
+    {
+        var fixture = Environment.GetEnvironmentVariable("QQLISTENER_PMHQ_FIXTURE");
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(fixture)) return;
+        var release = PmhqBundle.PinnedRelease;
+        var bytes = File.ReadAllBytes(fixture);
+        Assert.Equal(release.OutputSize, bytes.Length);
+        Assert.True(QQListener.Updates.DistributionClient.HashMatches(bytes, release.OutputSha256));
+        Environment.SetEnvironmentVariable("PMHQ_SRDI_TEST", "1");
+        using var process = new WindowsProcess(Environment.ProcessId);
+        // The same x64 trampoline, remote-thread LoadLibraryW, and error capture used inside QQ.
+        var module = process.LoadLibraryFile(fixture);
+        Assert.NotEqual(0UL, module);
+        var status = BitConverter.ToUInt32(process.Read(module + 0x106018, 4));
+        Assert.Equal(0u, status);
+        Console.WriteLine($"PMHQ production loader fixture: wrapper={status}, TLS index={BitConverter.ToUInt32(process.Read(module + 0xf59c0, 4))}");
+        // Native workers/callbacks have no shutdown contract. The test process owns the lifetime.
+    }
+
+    [Fact]
     public void ImagesWithStaticTlsCannotUseTheManualMapper()
     {
         var bytes = PortableExecutableTests.BuildProbeImage();
