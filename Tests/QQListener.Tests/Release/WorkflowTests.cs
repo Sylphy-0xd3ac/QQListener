@@ -76,7 +76,7 @@ public sealed class WorkflowTests
         var build = Mapping(Mapping(mapping, "jobs"), "build");
         var matrix = Mapping(Mapping(build, "strategy"), "matrix");
         var platforms = Assert.IsType<YamlSequenceNode>(Value(matrix, "os"));
-        Assert.Equal(new[] { "windows-latest", "macos-14" },
+        Assert.Equal(new[] { "windows-latest", "macos-15" },
             platforms.Children.Select(n => Assert.IsType<YamlScalarNode>(n).Value));
         Assert.False(build.Children.ContainsKey(new YamlScalarNode("defaults")));
 

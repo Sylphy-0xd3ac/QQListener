@@ -1,7 +1,7 @@
 # PMHQ local runtime
 
 The plugin downloads the pinned official PMHQ v9.0.6 archive on first use, applies
-an embedded binary delta, and uses the reconstructed DLL through a per-QQ named pipe. It does
+a separately downloaded, hash-verified binary delta, and uses the reconstructed DLL through a per-QQ named pipe. It does
 not run the original Rust launcher or require its manager startup token.
 
 The native wrapper is `dll-only-patch/local_pipe.c`. It derives local initialization
@@ -37,7 +37,7 @@ build tools, not plugin runtime dependencies.
 
 ## Distribution delta
 
-After rebuilding the reviewed DLL, generate the embedded delta:
+After rebuilding the reviewed DLL, generate the distribution delta:
 
 ```sh
 python dll-only-patch/make_delta.py --original /path/to/official/v9.0.6/pmhq.dll --patched dll-only-patch/build/pmhq.dll --output ../../Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch
