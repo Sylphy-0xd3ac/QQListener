@@ -41,6 +41,12 @@ jobs:
       - name: Build release
         run: dotnet build QQListener.sln --configuration Release --no-restore -p:ContinuousIntegrationBuild=true
 
+      - name: Verify PMHQ with the Windows system loader and native TLS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./Tools/VerifyPmhqNative.ps1
+
+
       - name: Run tests
         run: dotnet test QQListener.sln --configuration Release --no-build --no-restore --results-directory artifacts/test-results --logger trx
 
@@ -54,10 +60,6 @@ jobs:
         shell: bash
         run: bash Tests/Release/run.sh
 
-      - name: Verify PMHQ with the Windows system loader and native TLS
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./Tools/VerifyPmhqNative.ps1
 
       - name: Verify branch metadata
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type != 'tag'

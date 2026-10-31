@@ -23,7 +23,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="Bootstrap/QQListener.Loader.csproj" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="CreateCipx" AdditionalProperties="QQListenerTargetFramework=$(TargetFramework);EnableWindowsTargeting=$(EnableWindowsTargeting)" />
+        <ProjectReference Include="Bootstrap/QQListener.Loader.csproj" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="CreateCipx">
+            <AdditionalProperties Condition="'$(CreateCipx)' == 'true' and !$([MSBuild]::IsOSPlatform('Windows'))">QQListenerTargetFramework=$(TargetFramework);EnableWindowsTargeting=true</AdditionalProperties>
+        </ProjectReference>
         <EmbeddedResource Include="Assets/Updates/runtime-public.pem" LogicalName="QQListener.Updates.public.pem" />
         <PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)">
             <ExcludeAssets>runtime; native</ExcludeAssets>
