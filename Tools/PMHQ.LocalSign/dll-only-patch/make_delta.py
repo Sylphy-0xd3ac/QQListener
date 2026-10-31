@@ -12,8 +12,8 @@ args = parser.parse_args()
 original, patched = args.original.read_bytes(), args.patched.read_bytes()
 if hashlib.sha256(original).hexdigest() != '345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4':
     raise SystemExit('Expected the official PMHQ v9.0.6 Windows x64 DLL')
-if hashlib.sha256(patched).hexdigest() != 'ffb7e841a811ebead258730d7bb6f71c06a7e07e776ca1128c054bececa6c004':
-    raise SystemExit('Expected the reviewed local-pipe.2 DLL')
+if hashlib.sha256(patched).hexdigest() != 'b1be382be4da2980197f3329a3ef479d0674c3faa65c824ace32f6218cdb4ae6':
+    raise SystemExit('Expected the reviewed local-pipe.3 DLL')
 ranges = []
 for index, value in enumerate(patched):
     if index < len(original) and original[index] == value:

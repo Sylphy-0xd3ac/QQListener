@@ -40,15 +40,15 @@ build tools, not plugin runtime dependencies.
 After rebuilding the reviewed DLL, generate the distribution delta:
 
 ```sh
-python dll-only-patch/make_delta.py --original /path/to/official/v9.0.6/pmhq.dll --patched dll-only-patch/build/pmhq.dll --output ../../Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.2.patch
+python dll-only-patch/make_delta.py --original /path/to/official/v9.0.6/pmhq.dll --patched dll-only-patch/build/pmhq.dll --output ../../Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.3.patch
 ```
 
 The generator pins both input hashes and checks a round trip. QQLDIFF1 uses an
 8-byte magic, three little-endian uint32 values (source length, target length,
 range count), then ordered offset/length/literal records. The managed installer
-copies the base, resizes it, and applies the 15 ranges. It rejects overlapping,
+copies the base, resizes it, and applies the 14 ranges. It rejects overlapping,
 truncated, out-of-bounds or oversized records, then checks the final SHA-256.
-The patch is 41,798 bytes; the resulting 1,076,224-byte DLL retains its previously
+The patch is 42,295 bytes; the resulting 1,076,736-byte DLL retains its previously
 reviewed hash. The runtime needs neither Python nor Zig.
 
 ## Isolated native probes

@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <bcrypt.h>
 #include <stdint.h>
 #include "minicrt.h"
 
@@ -9,13 +8,29 @@ typedef struct { char magic[8]; DWORD original_entry,original_export,shift,reser
 __declspec(dllexport) DllConfig PMHQLocalSignConfig={{'Q','L','S','G','9','0','6',0},0,0,0,0};
 __declspec(dllexport) volatile LONG PMHQLocalRuntimeStatus=100;
 static volatile LONG initialized;
-static BOOL unset_env(const wchar_t *name){return SetEnvironmentVariableW(name,NULL)||GetLastError()==ERROR_ENVVAR_NOT_FOUND;}
+typedef BOOL (WINAPI *SetEnvFn)(LPCWSTR,LPCWSTR);
+typedef DWORD (WINAPI *ErrorFn)(void);
+typedef BOOL (WINAPI *ProtectFn)(LPVOID,SIZE_T,DWORD,PDWORD);
+typedef BOOL (WINAPI *RandomFn)(PUCHAR,SIZE_T);
+typedef HMODULE (WINAPI *ModuleFn)(LPCWSTR);
+typedef FARPROC (WINAPI *ProcFn)(HMODULE,LPCSTR);
+static SetEnvFn set_env;
+static ErrorFn last_error;
+static BOOL unset_env(const wchar_t *name){return set_env(name,NULL)||last_error()==ERROR_ENVVAR_NOT_FOUND;}
 
 static BOOL local_environment(unsigned char *base) {
     unsigned char seed[32],nonce[12],proof[32],key[32],anchor[76];
     wchar_t nonce_hex[25],proof_hex[65];
     static const wchar_t hex[]=L"0123456789abcdef";
-    if(BCryptGenRandom(NULL,nonce,sizeof(nonce),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)return FALSE;
+    /* Reuse the pinned original IAT. A second, discontiguous IAT cannot be
+     * described by PE's single IAT directory and broke Windows protection. */
+    ModuleFn module=*(ModuleFn *)(base+0x910c0);
+    ProcFn procedure=*(ProcFn *)(base+0x910c8);
+    last_error=*(ErrorFn *)(base+0x91058);
+    ProtectFn protect=*(ProtectFn *)(base+0x91120);
+    RandomFn random=*(RandomFn *)(base+0x913f8);
+    set_env=(SetEnvFn)procedure(module(L"kernel32.dll"),"SetEnvironmentVariableW");
+    if(!set_env||!random(nonce,sizeof(nonce)))return FALSE;
     /* These leaf functions and constants are from the SHA-256-pinned original
      * v9.0.6 DLL. Neither call performs I/O or obtains a server credential. */
     ((void (*)(void *))(base+0x694d8))(seed);
@@ -28,17 +43,17 @@ static BOOL local_environment(unsigned char *base) {
     DWORD old=0,ignored=0;
     if(valid) {
         valid=!memcmp(base+0x95221,"pmhq_runtime_",13)
-            && VirtualProtect(base+0x95221,13,PAGE_READWRITE,&old);
-        if(valid){memcpy(base+0x95221,"qqlp_runtime_",13);valid=VirtualProtect(base+0x95221,13,old,&ignored);}
+            && protect(base+0x95221,13,PAGE_READWRITE,&old);
+        if(valid){memcpy(base+0x95221,"qqlp_runtime_",13);valid=protect(base+0x95221,13,old,&ignored);}
     }
     for(unsigned i=0;i<12;i++){nonce_hex[2*i]=hex[nonce[i]>>4];nonce_hex[2*i+1]=hex[nonce[i]&15];}
     for(unsigned i=0;i<32;i++){proof_hex[2*i]=hex[proof[i]>>4];proof_hex[2*i+1]=hex[proof[i]&15];}
     nonce_hex[24]=0;proof_hex[64]=0;
-    if(valid) valid=SetEnvironmentVariableW(L"PMHQ_CHAL_NONCE",nonce_hex)
-        && SetEnvironmentVariableW(L"PMHQ_CHAL_PROOF",proof_hex)
-        && SetEnvironmentVariableW(L"PMHQ_ATTACH",L"1")
-        && SetEnvironmentVariableW(L"PMHQ_SERVER_HOST",L"127.0.0.1")
-        && SetEnvironmentVariableW(L"PMHQ_SERVER_PORT",L"0")
+    if(valid) valid=set_env(L"PMHQ_CHAL_NONCE",nonce_hex)
+        && set_env(L"PMHQ_CHAL_PROOF",proof_hex)
+        && set_env(L"PMHQ_ATTACH",L"1")
+        && set_env(L"PMHQ_SERVER_HOST",L"127.0.0.1")
+        && set_env(L"PMHQ_SERVER_PORT",L"0")
         && unset_env(L"PMHQ_DUMP_SIGN")
         && unset_env(L"PMHQ_DUMP_TEA")
         && unset_env(L"PMHQ_DEBUG_PB")

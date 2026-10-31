@@ -7,12 +7,12 @@ namespace QQListener.Core;
 
 public sealed class PmhqBundle
 {
-    public const string Version = "9.0.6-local-pipe.2";
-    public const string DllHash = "ffb7e841a811ebead258730d7bb6f71c06a7e07e776ca1128c054bececa6c004";
+    public const string Version = "9.0.6-local-pipe.3";
+    public const string DllHash = "b1be382be4da2980197f3329a3ef479d0674c3faa65c824ace32f6218cdb4ae6";
     public const string OriginalHash = "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4";
     public const string DownloadUrl = "https://github.com/linyuchen/PMHQ/releases/download/v9.0.6/pmhq-win-x64.zip";
     public const string ArchiveHash = "64da6159976aee0eb1b67bc0c82ca3c540d9bfd4a41cc17d5a308e24dbfd7587";
-    public const string PatchHash = "46b1b076f0d97bb1c2f877a19ab92313351111a2dbdfe5d480b2a5002bec9dbc";
+    public const string PatchHash = "3e91f146fbd69af8c5deee7398c8a4319b43eb54be11bb5ef52e59be3ce08ed2";
     private const int MaxDownloadBytes = 32 * 1024 * 1024;
     private static readonly HttpClient SharedHttp = new();
     private static readonly SemaphoreSlim InstallGate = new(1, 1);
@@ -42,7 +42,7 @@ public sealed class PmhqBundle
     {
         var installed = ReadInstalledRelease(directory);
         var minimum = PinnedRelease;
-        // local-pipe.1 has invalid PE section gaps on Windows; never reuse it.
+        // Older local-pipe images violate Windows section/IAT mapping rules; never reuse them.
         return installed is null || ReleaseVersionComparer.Instance.Compare(installed.RuntimeVersion, minimum.RuntimeVersion) < 0
             ? minimum : installed;
     }

@@ -54,10 +54,13 @@ for block in getattr(helper, 'DIRECTORY_ENTRY_BASERELOC', []):
     relocations.extend(struct.pack('<II', block.struct.VirtualAddress + shift, 8 + len(entries) * 2))
     relocations.extend(struct.pack('<' + 'H' * len(entries), *entries))
 
+# Keep the original IAT directory/ranges. Helpers must reuse these entries;
+# clearing IMAGE_DIRECTORY_ENTRY_IAT makes Windows infer the wrong writable area.
+assert not getattr(helper, 'DIRECTORY_ENTRY_IMPORT', []), 'Payload must reuse the original IAT'
 imports = bytearray()
 for item in original.DIRECTORY_ENTRY_IMPORT:
     imports.extend(original_data[item.struct.get_file_offset():item.struct.get_file_offset() + 20])
-for item in helper.DIRECTORY_ENTRY_IMPORT:
+for item in getattr(helper, 'DIRECTORY_ENTRY_IMPORT', []):
     desc = item.struct
     assert desc.OriginalFirstThunk and not desc.TimeDateStamp and not desc.ForwarderChain
     for thunk in (desc.OriginalFirstThunk, desc.FirstThunk):
@@ -143,7 +146,7 @@ set_field(original.OPTIONAL_HEADER, 'AddressOfEntryPoint', '<I', shift + exports
 set_field(original.OPTIONAL_HEADER, 'SizeOfImage', '<I', align(meta_rva + len(meta), 0x1000))
 set_field(original.OPTIONAL_HEADER, 'SizeOfCode', '<I', original.OPTIONAL_HEADER.SizeOfCode + sum(align(len(s[3]),0x200) for s in sections if s[4] & 0x20))
 set_field(original.OPTIONAL_HEADER, 'SizeOfInitializedData', '<I', original.OPTIONAL_HEADER.SizeOfInitializedData + sum(align(len(s[3]),0x200) for s in sections if s[4] & 0x40))
-for index, rva, size in [(0,export_rva,export_size),(1,import_rva,len(imports)),(3,pdata_rva,len(pdata_bytes)),(5,reloc_rva,len(relocations)),(4,0,0),(12,0,0)]:
+for index, rva, size in [(0,export_rva,export_size),(1,import_rva,len(imports)),(3,pdata_rva,len(pdata_bytes)),(5,reloc_rva,len(relocations)),(4,0,0)]:
     directory = original.OPTIONAL_HEADER.DATA_DIRECTORY[index]
     set_field(directory,'VirtualAddress','<I',rva)
     set_field(directory,'Size','<I',size)
@@ -165,7 +168,7 @@ out.write_bytes(result)
 checked = pefile.PE(str(out))
 assert checked.verify_checksum()
 assert len(checked.DIRECTORY_ENTRY_EXPORT.symbols) == len(names)
-assert len(checked.DIRECTORY_ENTRY_IMPORT) == len(original.DIRECTORY_ENTRY_IMPORT) + len(helper.DIRECTORY_ENTRY_IMPORT)
+assert len(checked.DIRECTORY_ENTRY_IMPORT) == len(original.DIRECTORY_ENTRY_IMPORT) + len(getattr(helper, 'DIRECTORY_ENTRY_IMPORT', []))
 for old in original.sections:
     assert checked.get_data(old.VirtualAddress,old.SizeOfRawData) == original.get_data(old.VirtualAddress,old.SizeOfRawData), old.Name
 report = {'original_sha256': ORIGINAL_HASH, 'patched_sha256': hashlib.sha256(result).hexdigest(), 'bytes':len(result), 'payload_shift':hex(shift), 'original_entry':hex(original.OPTIONAL_HEADER.AddressOfEntryPoint), 'new_entry':hex(checked.OPTIONAL_HEADER.AddressOfEntryPoint), 'original_code_and_data_sections_preserved':True, 'exports':{e.name.decode():hex(e.address) for e in checked.DIRECTORY_ENTRY_EXPORT.symbols}, 'imports':[d.dll.decode() for d in checked.DIRECTORY_ENTRY_IMPORT]}

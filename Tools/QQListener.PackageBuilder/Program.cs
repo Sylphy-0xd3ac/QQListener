@@ -7,7 +7,7 @@ if (args.Length == 3 && args[0] == "--pmhq-fixture")
 {
     var fixtureRoot = Path.GetFullPath(args[1]);
     var release = JsonSerializer.Deserialize<PmhqRelease>(File.ReadAllBytes(Path.Combine(fixtureRoot,
-        "Distribution/pmhq/9.0.6-local-pipe.2.json")), DistributionCatalog.JsonOptions)!;
+        "Distribution/pmhq/9.0.6-local-pipe.3.json")), DistributionCatalog.JsonOptions)!;
     DistributionCatalog.Validate(release);
     var archiveBytes = await new DistributionClient().AssetAsync(release.Archive, null, default);
     using var archive = new ZipArchive(new MemoryStream(archiveBytes));
@@ -35,6 +35,11 @@ if (args.Length == 3 && args[0] == "--pmhq-fixture")
                         + header.SectionAlignment - 1) & -header.SectionAlignment;
         }
         if (expected != header.SizeOfImage) throw new IOException("PE image size mismatch.");
+        using var upstream = new System.Reflection.PortableExecutable.PEReader(new MemoryStream(original));
+        var upstreamIat = upstream.PEHeaders.PEHeader!.ImportAddressTableDirectory;
+        if (header.ImportAddressTableDirectory.RelativeVirtualAddress != upstreamIat.RelativeVirtualAddress
+            || header.ImportAddressTableDirectory.Size != upstreamIat.Size)
+            throw new IOException("The pinned original IAT directory must be preserved.");
     }
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[2]))!);
     File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[2]))!, "upstream.dll"), original);

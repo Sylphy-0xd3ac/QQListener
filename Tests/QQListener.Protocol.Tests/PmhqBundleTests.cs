@@ -8,18 +8,20 @@ namespace QQListener.Protocol.Tests;
 
 public sealed class PmhqBundleTests
 {
-    [Fact]
-    public async Task LegacyWindowsInvalidLayoutIsNotReusedByTheDefaultHost()
+    [Theory]
+    [InlineData("9.0.6-local-pipe.1")]
+    [InlineData("9.0.6-local-pipe.2")]
+    public async Task LegacyWindowsInvalidLayoutIsNotReusedByTheDefaultHost(string version)
     {
         using var fixture = new Fixture();
-        var old = PmhqBundle.PinnedRelease with { RuntimeVersion = "9.0.6-local-pipe.1",
+        var old = PmhqBundle.PinnedRelease with { RuntimeVersion = version,
             OutputSha256 = Hash(fixture.Patched), OutputSize = fixture.Patched.Length };
         var legacy = new PmhqBundle(fixture.Root, old);
         Directory.CreateDirectory(legacy.BinaryDirectory);
         File.WriteAllBytes(legacy.BinaryPath, fixture.Patched);
         await legacy.PrepareAsync();
         var current = new PmhqBundle(fixture.Root);
-        Assert.Equal("9.0.6-local-pipe.2", current.RuntimeVersion);
+        Assert.Equal("9.0.6-local-pipe.3", current.RuntimeVersion);
         Assert.False(current.IsInstalled);
     }
     [Fact]
@@ -60,7 +62,7 @@ public sealed class PmhqBundleTests
         Assert.DoesNotContain("QQListener.PMHQ.local-pipe.patch", assembly.GetManifestResourceNames());
         var release = PmhqBundle.PinnedRelease;
         Assert.Equal(PmhqBundle.PatchHash, release.Patch.Sha256);
-        Assert.Equal(41_798, release.Patch.Size);
+        Assert.Equal(42_295, release.Patch.Size);
         Assert.Contains("Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/", release.Patch.Url);
     }
 

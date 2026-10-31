@@ -33,3 +33,9 @@ Windows run 41211008156 rejected the previous reconstructed DLL with `LoadLibrar
 The merged image left gaps at RVA `0x102000..0x103000` (payload header space) and `0x105000..0x106000` (omitted payload debug section). Microsoft's [PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-table-section-headers) requires image section VAs to be ascending and adjacent. The merger now extends preceding virtual zero-fill spans to cover those gaps; it preserves all code/data RVAs, original raw section bytes and TLS metadata.
 
 The corrected runtime is `9.0.6-local-pipe.2`. The former delta remains only as a negative CI fixture. The native check loads the official DLL, requires error 193 from the old reconstructed layout, then checks TLS and the production remote-call path with the corrected DLL. Only supported versions appear in the distribution catalog. Existing local-pipe.1 installations are upgraded to the new minimum runtime rather than reused.
+
+## Windows import protection correction
+
+Run 41220467667 reached a second failure with the section-gap correction: exception `0xc0000005`, write target ending at the original IAT RVA `0x91000`. The official DLL passed, while the old image still returned 193. The merger had cleared the IAT directory and moved import descriptors into another section; Windows consequently attempted to write the still-read-only original IAT. Wine's different protection handling concealed this error.
+
+`local-pipe.3` preserves the original IAT directory and imports. Its freestanding wrapper reuses the original `GetModuleHandleW`, `GetProcAddress`, `GetLastError`, `VirtualProtect` and `ProcessPrng` IAT slots, resolving `SetEnvironmentVariableW` through the existing Kernel32 entry. The merger rejects helper imports rather than producing a second discontiguous IAT. Nonces still come from Windows' CSPRNG. No original code, data or TLS RVA moves.
