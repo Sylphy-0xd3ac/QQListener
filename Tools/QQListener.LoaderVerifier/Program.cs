@@ -64,7 +64,8 @@ internal static class Program
         finally
         {
             // The noncollectible core remains mapped until exit on Windows.
-            try { Directory.Delete(root, true); } catch (IOException) { }
+            try { Directory.Delete(root, true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
     }
 
