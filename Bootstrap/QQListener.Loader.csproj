@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(QQListenerTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Version>$(QQListenerReleaseVersion)</Version>
+    <AssemblyVersion>$(QQListenerVersion)</AssemblyVersion>
+    <FileVersion>$(QQListenerVersion)</FileVersion>
+    <InformationalVersion>$(QQListenerReleaseVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)" ExcludeAssets="runtime;native" />
+    <Compile Include="../Updates/*.cs" Link="Updates/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../Assets/Updates/runtime-public.pem" LogicalName="QQListener.Updates.public.pem" />
+  </ItemGroup>
+</Project>

@@ -256,21 +256,30 @@ internal static class Program
             var experimental = new Window { Width = 680, Height = 800, Content = page };
             experimental.Show();
             Pump(TimeSpan.FromMilliseconds(300));
-            var selector = experimental.GetVisualDescendants().OfType<ComboBox>()
-                .Single(combo => combo.Items.Cast<object>().Any(item => item as string == "PMHQ（实验性）"));
-            if (selector.SelectedIndex != 1) throw new InvalidOperationException("引擎选择未恢复为 PMHQ");
             var engine = experimental.GetVisualDescendants().OfType<SettingsExpander>()
-                .Single(item => item.Header as string == "消息引擎");
+                .Single(item => item.Header as string == "内核管理");
             engine.IsExpanded = true;
             Pump(TimeSpan.FromMilliseconds(300));
+            var selector = experimental.GetVisualDescendants().OfType<ComboBox>()
+                .Single(combo => combo.Items.Cast<object>().Any(item => item as string == "PMHQ"));
+            if (selector.SelectedIndex != 1) throw new InvalidOperationException("引擎选择未恢复为 PMHQ");
             engine.BringIntoView();
             Pump(TimeSpan.FromMilliseconds(300));
-            if (!experimental.GetVisualDescendants().OfType<TextBlock>()
-                    .Any(text => text.Text?.StartsWith("实验性功能：", StringComparison.Ordinal) == true))
-                throw new InvalidOperationException("PMHQ 实验性警告不可见");
             using (var frame = experimental.CaptureRenderedFrame()!)
                 frame.Save(Path.Combine(directory, $"Settings-PMHQ-{theme}.png"));
             experimental.Close();
+            var downloads = new EngineDownloadWindow(page.KernelSetup);
+            downloads.Show();
+            Pump(TimeSpan.FromMilliseconds(300));
+            using (var frame = downloads.CaptureRenderedFrame()!)
+                frame.Save(Path.Combine(directory, $"EngineDownloads-{theme}.png"));
+            downloads.Close();
+            var wizard = new KernelSetupWizardWindow(page.KernelSetup);
+            wizard.Show();
+            Pump(TimeSpan.FromMilliseconds(300));
+            using (var frame = wizard.CaptureRenderedFrame()!)
+                frame.Save(Path.Combine(directory, $"Setup-{theme}.png"));
+            wizard.Close();
         }
         Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
         Console.WriteLine("Light/dark message and settings previews OK");

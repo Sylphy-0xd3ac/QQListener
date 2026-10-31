@@ -33,6 +33,7 @@ run_case() {
     local working_directory="$temporary_root/$scenario"
     mkdir -p "$working_directory/release"
     printf '%s\n' package > "$working_directory/release/QQListener.cipx"
+    printf '%s\n' loader > "$working_directory/release/QQListener.Download.cipx"
     printf '%s\n' '<!-- CLASSISLAND_PKG_MD5 {"QQListener.cipx":"00000000000000000000000000000000"} -->' > "$working_directory/release/checksums.md"
     printf '# Changelog\r\n\r\n## [2.2.0.0] - 2026-10-23\r\n\r\n- Current release.\r\n\r\n## [2.1.0.0]\r\n\r\n- Previous release.\r\n' > "$working_directory/CHANGELOG.md"
     : > "$working_directory/calls.log"
@@ -123,3 +124,5 @@ run_case stable 0
 run_case stable_metadata 0
 run_case leading_zero 1
 run_case invalid_semver 1
+
+bash "$repository_root/Tests/Release/runtime.sh"

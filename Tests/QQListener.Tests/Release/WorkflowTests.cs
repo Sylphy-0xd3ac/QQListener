@@ -21,7 +21,7 @@ public sealed class WorkflowTests
     private const string TaggedMetadataRun =
         "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only --tag \"$env:RELEASE_TAG\"";
     private const string BuildCipxRun =
-        "dotnet build QQListener.csproj --configuration Release --no-restore -p:CreateCipx=true -p:ContinuousIntegrationBuild=true";
+        "dotnet build QQListener.csproj --configuration Release --no-restore -p:CreateCipx=true -p:ContinuousIntegrationBuild=true -p:RuntimeBuildNumber=${{ github.run_number }}";
     private const string BranchPackageRun =
         "dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release";
     private const string TaggedPackageRun =

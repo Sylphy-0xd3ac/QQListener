@@ -9,15 +9,45 @@ namespace QQListener.Protocol.Tests;
 public sealed class PmhqBundleTests
 {
     [Fact]
-    public void PluginEmbedsOnlyThePinnedDelta()
+    public void FailedLegacyLoadsDoNotBlockButUncertainRemoteCallsDo()
+    {
+        using var fixture = new Fixture();
+        var bundle = fixture.Bundle();
+        bundle.RememberResidentHook(12, 100);
+        Assert.False(bundle.HasBlockingResidentHook(12, 100, false));
+        Assert.False(bundle.HasResidentHook(12, 100));
+        Assert.True(bundle.HasBlockingResidentHook(12, 100, true));
+        bundle.RememberResidentHook(12, 100, uncertain: true);
+        Assert.True(bundle.HasBlockingResidentHook(12, 100, false));
+        Assert.False(bundle.HasBlockingResidentHook(12, 101, false));
+        Assert.False(bundle.HasBlockingResidentHook(13, 100, false));
+    }
+
+    [Fact]
+    public async Task RemotePatchIsVerifiedCachedAndSupportsOfflineRepair()
+    {
+        using var fixture = new Fixture();
+        var bundle = fixture.RemoteBundle();
+        await bundle.PrepareAsync("https://proxy.example");
+        Assert.Equal(2, fixture.Requests);
+        Assert.Equal(fixture.Patched, File.ReadAllBytes(bundle.BinaryPath));
+        File.Delete(bundle.BinaryPath);
+        fixture.Reply = (_, _) => throw new HttpRequestException("offline");
+        await bundle.PrepareAsync();
+        Assert.Equal(2, fixture.Requests);
+        Assert.Equal(fixture.Patched, File.ReadAllBytes(bundle.BinaryPath));
+        Assert.Equal(bundle.RuntimeVersion, new PmhqBundle(fixture.Root).RuntimeVersion);
+    }
+    [Fact]
+    public void PluginEmbedsMetadataButDownloadsThePatch()
     {
         var assembly = typeof(PmhqBundle).Assembly;
         Assert.DoesNotContain("QQListener.PMHQ.pmhq.dll", assembly.GetManifestResourceNames());
-        using var source = assembly.GetManifestResourceStream("QQListener.PMHQ.local-pipe.patch")!;
-        using var bytes = new MemoryStream();
-        source.CopyTo(bytes);
-        Assert.Equal(41_788, bytes.Length);
-        Assert.Equal(PmhqBundle.PatchHash, Hash(bytes.ToArray()));
+        Assert.DoesNotContain("QQListener.PMHQ.local-pipe.patch", assembly.GetManifestResourceNames());
+        var release = PmhqBundle.PinnedRelease;
+        Assert.Equal(PmhqBundle.PatchHash, release.Patch.Sha256);
+        Assert.Equal(41_788, release.Patch.Size);
+        Assert.Contains("Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/", release.Patch.Url);
     }
 
     [Fact]
@@ -208,6 +238,19 @@ public sealed class PmhqBundleTests
             }));
         }
         public PmhqBundle Bundle(PmhqBundle.Distribution? spec = null) => new(Root, _http, spec ?? Spec, () => _patch);
+        public PmhqBundle RemoteBundle()
+        {
+            var release = PmhqBundle.PinnedRelease with
+            {
+                Archive = new(PmhqBundle.DownloadUrl, Hash(_archive), _archive.Length),
+                OriginalSha256 = Hash(Original), OriginalSize = Original.Length,
+                OutputSha256 = Hash(Patched), OutputSize = Patched.Length,
+                Patch = new("https://github.com/example/patch", Hash(_patch), _patch.Length)
+            };
+            Reply = (request, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new ByteArrayContent(request.RequestUri!.AbsolutePath.EndsWith("/patch") ? _patch : _archive) });
+            return new(Root, release, _http);
+        }
         public void Dispose() { _http.Dispose(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
     }
 

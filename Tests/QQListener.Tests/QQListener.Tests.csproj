@@ -26,4 +26,7 @@
     <ProjectReference Include="..\..\QQListener.csproj" />
     <ProjectReference Include="..\..\Tools\QQListener.ReleaseVerifier\QQListener.ReleaseVerifier.csproj" />
   </ItemGroup>
+  <Target Name="CopyLoaderForPackagingTests" AfterTargets="Build">
+    <Copy SourceFiles="../../Bootstrap/bin/$(Configuration)/$(TargetFramework)/QQListener.Loader.dll" DestinationFolder="$(TargetDir)" />
+  </Target>
 </Project>

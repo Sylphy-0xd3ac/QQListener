@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QQListener.Core;
 using QQListener.Models;
+using QQListener.Services;
+using QQListener.Updates;
 
 namespace QQListener.Views.SettingsPages;
 
@@ -18,6 +20,7 @@ public partial class KernelSetupViewModel : ObservableObject
 {
     private readonly QqListenerSettings _settings;
     private readonly KernelInstaller _installer;
+    private readonly EngineInstallationService _installations;
     private readonly DispatcherTimer _runtimeTimer;
 
     [ObservableProperty]
@@ -29,13 +32,72 @@ public partial class KernelSetupViewModel : ObservableObject
     private string _currentVersionText = "未安装";
 
     /// <summary>内核卡片第三行：装了什么版本、现在是什么状态，一句话说完。</summary>
-    public string KernelVersionLine => _settings.Engine == ListenerEngine.PMHQ
-        ? $"PMHQ {PmhqBundle.Version}（按需下载 · 实验性） · {ControlStateText}"
-        : !IsSupported
-        ? "原生捕获仅在 Windows x64 上可用"
-        : IsInstalled
-            ? $"内核 {CurrentVersionText} · {ControlStateText}"
-            : "内核尚未安装，请在高级设置中重新触发安装向导";
+    public string KernelVersionLine => !IsSupported ? "原生捕获仅在 Windows x64 上可用"
+        : _settings.Engine == ListenerEngine.PMHQ ? $"PMHQ {PmhqCurrentVersion} · {ControlStateText}"
+        : $"SnowLuma {CurrentVersionText} · {ControlStateText}";
+
+    public string PmhqCurrentVersion => _installations.Pmhq.Installed;
+    public string PmhqLatestVersion => _installations.Pmhq.Latest;
+    public string SnowDownloadStatus => _installations.Snow.Detail;
+    public string PmhqDownloadStatus => _installations.Pmhq.Detail;
+    public double SnowDownloadProgress => _installations.Snow.Progress;
+    public double PmhqDownloadProgress => _installations.Pmhq.Progress;
+    public bool AllInstalled => _installations.AllInstalled;
+    public bool DownloadBusy => _installations.Busy;
+    public bool AutoUpdateCore
+    {
+        get => LoaderSettings.Read(_settings.SettingsDirectory).AutoUpdate;
+        set
+        {
+            var current = LoaderSettings.Read(_settings.SettingsDirectory);
+            (current with { AutoUpdate = value }).Save(_settings.SettingsDirectory);
+            OnPropertyChanged();
+        }
+    }
+    public string CoreVersion => typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "未知";
+    public string CoreUpdateStatus { get; private set; } = "重启 ClassIsland 时应用已下载的核心更新";
+    public void CompleteSetup() => _settings.ModifyAndSave(s => s.KernelSetupCompleted = true);
+
+    private void RefreshDownloads()
+    {
+        CurrentVersionText = _installations.Snow.Installed;
+        LatestVersionText = _installations.Snow.Latest;
+        IsInstalled = CurrentVersionText != "未安装";
+        foreach (var name in new[] { nameof(PmhqCurrentVersion), nameof(PmhqLatestVersion), nameof(SnowDownloadStatus),
+            nameof(PmhqDownloadStatus), nameof(SnowDownloadProgress), nameof(PmhqDownloadProgress), nameof(AllInstalled),
+            nameof(DownloadBusy), nameof(KernelVersionLine) }) OnPropertyChanged(name);
+    }
+
+    [RelayCommand]
+    private void CancelDownload() => _installations.Cancel();
+
+    [RelayCommand]
+    private async Task UpdateCoreAsync()
+    {
+        if (IsBusy) return;
+        IsBusy = true;
+        CoreUpdateStatus = "检查 QQListener 核心更新…";
+        OnPropertyChanged(nameof(CoreUpdateStatus));
+        try
+        {
+            var config = LoaderSettings.Read(_settings.SettingsDirectory);
+            var store = new RuntimeStore(_settings.SettingsDirectory);
+            var client = new DistributionClient();
+            var catalog = await client.CatalogAsync(config.CatalogUrl, DownloadProxy, default, store.Root);
+            var next = catalog.LatestCore ?? throw new IOException("暂无兼容的核心构建");
+            if (store.Active is { } active && active.BuildNumber >= next.BuildNumber && active.Package.Sha256 == next.Package.Sha256)
+                CoreUpdateStatus = "当前核心已是最新构建";
+            else if (store.IsRejected(next)) CoreUpdateStatus = "此构建曾加载失败，等待后续更新";
+            else
+            {
+                var progress = new Progress<DownloadProgress>(p => { CoreUpdateStatus = $"下载 QQListener 核心 {p.Percent:F0}%"; OnPropertyChanged(nameof(CoreUpdateStatus)); });
+                await store.StageAsync(next, await client.AssetAsync(next.Package, DownloadProxy, default, progress), default);
+                CoreUpdateStatus = $"已下载 {next.Version} / 构建 {next.BuildNumber}，重启 ClassIsland 后生效";
+            }
+        }
+        catch (Exception e) { CoreUpdateStatus = "更新失败：" + e.Message; }
+        finally { IsBusy = false; OnPropertyChanged(nameof(CoreUpdateStatus)); }
+    }
 
     [ObservableProperty]
     private string _latestVersionText = "尚未检查";
@@ -99,6 +161,8 @@ public partial class KernelSetupViewModel : ObservableObject
         {
             if (_settings.KernelDownloadProxy == value) return;
             _settings.ModifyAndSave(s => s.KernelDownloadProxy = value ?? "");
+            var loader = LoaderSettings.Read(_settings.SettingsDirectory);
+            (loader with { Proxy = value ?? "" }).Save(_settings.SettingsDirectory);
             OnPropertyChanged();
         }
     }
@@ -106,10 +170,11 @@ public partial class KernelSetupViewModel : ObservableObject
     /// <summary>只有 Windows 上 SnowLuma 才有官方内核；其他平台向导整体隐藏。</summary>
     public bool IsSupported { get; } = OperatingSystem.IsWindows();
 
-    public KernelSetupViewModel(QqListenerSettings settings, string nativeDirectory)
+    public KernelSetupViewModel(QqListenerSettings settings, string nativeDirectory, EngineInstallationService? installations = null)
     {
         _settings = settings;
         _installer = new KernelInstaller(nativeDirectory);
+        _installations = installations ?? new EngineInstallationService(settings, nativeDirectory);
         // 诊断状态是后台线程写的全局快照，定期拉取刷新，不需要事件总线；
         // 计时器随设置页 Attach/Detach 起停，不在这里直接开始。
         _runtimeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -117,6 +182,7 @@ public partial class KernelSetupViewModel : ObservableObject
         {
             RefreshRuntimeState();
             RefreshControlState();
+            RefreshDownloads();
         };
 
         RefreshInstalledState();
@@ -162,6 +228,7 @@ public partial class KernelSetupViewModel : ObservableObject
     {
         IsInstalled = _installer.IsCoreInstalled();
         CurrentVersionText = _installer.CurrentVersion() ?? "未安装";
+        RefreshDownloads();
     }
 
     private void RefreshRuntimeState()
@@ -265,18 +332,10 @@ public partial class KernelSetupViewModel : ObservableObject
         StatusText = "正在检查更新…";
         try
         {
-            // 检查更新本身也要走用户配的加速代理——不然填了代理也没用，
-            // 光是查版本这一步就直连 api.github.com 卡死。
-            var proxy = string.IsNullOrWhiteSpace(DownloadProxy) ? null : DownloadProxy.Trim();
-            var status = await _installer.CheckUpdateAsync(proxy: proxy);
-            RefreshInstalledState();
-            LatestVersionText = status.LatestVersion ?? "未知";
-            HasUpdate = status.HasUpdate;
-            StatusText = status.Error.Length > 0
-                ? $"检查更新失败：{status.Error}"
-                : status.HasUpdate
-                    ? $"发现新版本 {status.LatestVersion}"
-                    : "已是最新版本";
+            await _installations.CheckAsync();
+            RefreshDownloads();
+            HasUpdate = LatestVersionText != CurrentVersionText || PmhqLatestVersion.TrimStart('v') != PmhqCurrentVersion.Split('-')[0];
+            StatusText = "版本检查完成";
         }
         catch (Exception ex)
         {
@@ -302,11 +361,12 @@ public partial class KernelSetupViewModel : ObservableObject
         StatusText = "正在下载核心…";
         try
         {
-            var proxy = string.IsNullOrWhiteSpace(DownloadProxy) ? null : DownloadProxy.Trim();
-            var version = await _installer.DownloadAndInstallAsync(proxy);
+            await _installations.CheckAsync();
+            await _installations.InstallBothAsync();
             RefreshInstalledState();
+            if (AllInstalled) CompleteSetup();
             HasUpdate = false;
-            StatusText = $"安装完成：{version}";
+            StatusText = "SnowLuma 和 PMHQ 安装完成";
         }
         catch (Exception ex)
         {

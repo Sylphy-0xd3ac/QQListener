@@ -20,9 +20,15 @@ namespace QQListener;
 public class Plugin : PluginBase
 {
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
+        => InitializeCore(context, services, PluginConfigFolder, Info.PluginFolderPath,
+            Info.Manifest.Version ?? "", Info.Manifest.Author ?? "", Info.Manifest.Url);
+
+    // ABI 1: called by the small loader before the host builds its service provider.
+    public static void InitializeCore(HostBuilderContext context, IServiceCollection services,
+        string configFolder, string pluginFolder, string manifestVersion, string author, string? url)
     {
         Views.ItemsRepeaterAutomationCompatibility.Install();
-        var settings = LoadStartupSettings(PluginConfigFolder);
+        var settings = LoadStartupSettings(configFolder);
 
         var diagnostics = new QqListenerDiagnosticsState();
         if (settings.HasLoadWarning)
@@ -32,16 +38,14 @@ public class Plugin : PluginBase
 
         var assemblyPath = Assembly.GetExecutingAssembly().Location;
         diagnostics.RecordRuntimeInfo(
-            Info.Manifest.Version ?? "",
-            Info.PluginFolderPath,
+            Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? manifestVersion,
+            pluginFolder,
             settings.SettingsFilePath,
             assemblyPath,
             File.Exists(assemblyPath) ? File.GetLastWriteTime(assemblyPath) : null);
 
         var pluginInfo = QqListenerPluginInfo.FromManifest(
-            Info.Manifest.Version ?? "",
-            Info.Manifest.Author ?? "",
-            Info.Manifest.Url);
+            manifestVersion, author, url);
 
         RegisterRuntimeServices(services, settings, diagnostics);
         services.AddSingleton(pluginInfo);
@@ -75,6 +79,8 @@ public class Plugin : PluginBase
         QqListenerDiagnosticsState diagnostics)
     {
         services.AddSingleton(settings);
+        services.AddSingleton(sp => new EngineInstallationService(settings));
+        services.AddHostedService<EngineSetupHostedService>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<ILessonStateProvider, ClassIslandLessonStateProvider>();
         services.AddSingleton<MessageRuleEvaluator>();

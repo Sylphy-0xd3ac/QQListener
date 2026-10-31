@@ -10,7 +10,9 @@ public sealed class ServiceRegistrationTests
     [Fact]
     public void RuntimeServicesValidateAndResolve()
     {
+        using var host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder().Build();
         var services = new ServiceCollection();
+        services.AddSingleton(host.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>());
         services.AddLogging();
         var settings = new QqListenerSettings { IsEnabled = false };
         var diagnostics = new QqListenerDiagnosticsState();

@@ -16,19 +16,28 @@
 - 按优先级依次提醒，同一会话的短时连续消息可合并显示。
 - 可选引用群消息回复预设文本，或为群消息添加 QQ 的 OK 表情回应。
 - 提供语音、提示音、工作流触发器与动作，以及“最后 QQ 消息”组件。
-- 在底部「调试 → 消息引擎」选择 SnowLuma 或按需下载的 PMHQ 实验引擎。
+- 在「内核管理」中安装、更新和切换 SnowLuma / PMHQ。
 
 ## 安装
 
 需要 Windows x64、ClassIsland 和已登录的 NT QQ。不支持 TIM；macOS、Linux 不支持原生消息捕获。
 
 1. 从 [Releases](https://github.com/Sylphy-0xd3ac/QQListener/releases) 下载 `.cipx` 文件，在 ClassIsland 的插件管理中从本地安装，随后重启 ClassIsland。
-2. 打开 QQListener 设置，在「高级设置 → 重新触发安装向导」中阅读许可说明并安装 SnowLuma 内核。
+2. 首次启动会打开安装向导，阅读许可后安装 SnowLuma 和 PMHQ。
 3. 开启监听，配置需要提醒的群聊、联系人与关键词。确认接收管道已连接后，发送一条测试消息。
 
 SnowLuma 内核不随插件分发，首次使用需单独下载并接受其许可。插件设置、回复方式及常见问题见[使用说明](docs/usage.md)。
 
-PMHQ 为实验性选项。首次使用从官方获取固定的 v9.0.6，校验后应用随插件提供的补丁；后续可离线复用。直接使用本机 QQ，无需 `auth_token` 或 manager 启动配置。切换时会显示提示，并等待原 QQ 进程退出后再连接。真实 QQ 注入、签名及发包尚未完成 Windows 验收，使用方法见[说明](docs/usage.md#pmhq-实验引擎)。
+### 安装包与更新
+
+| 文件 | 用途 |
+| --- | --- |
+| `QQListener.cipx` | 内置 QQListener 核心，首次启动解压到持久化目录；推荐使用。 |
+| `QQListener.Download.cipx` | 仅含 Loader，首次启动从 GitHub 或配置的 ghproxy 下载核心。 |
+
+两种包使用同一个更新源：[本仓库自动构建](https://github.com/Sylphy-0xd3ac/QQListener/releases/tag/runtime-builds)。通过检查的 main 构建会发布独立核心包和签名清单。Loader 在启动时检查更新，保留上一可用版本；消息引擎、设置和下载文件不随核心替换。可在内核管理中关闭自动更新。
+
+SnowLuma 和 PMHQ 的安装状态、版本及下载进度统一显示在内核管理窗口。PMHQ 只有在更新清单包含对应补丁时才升级。引擎切换会尝试卸载旧钩子，无法安全卸载时提示重启 QQ。具体限制及 Windows 验收范围见[使用说明](docs/usage.md#消息引擎)。
 
 ## 开发
 
@@ -55,7 +64,7 @@ dotnet test QQListener.sln -c Release --no-build --no-restore
 - [BSOD-MEMZ/QQListener](https://github.com/BSOD-MEMZ/QQListener)：原生捕获实现与项目起源。
 - [alright-qwq/QQListener](https://github.com/alright-qwq/QQListener)：ClassIsland 插件形态与规则模型。
 - [SnowLuma](https://github.com/SnowLuma/SnowLuma)：QQ 原生捕获内核及协议参考。
-- [PMHQ](https://github.com/linyuchen/PMHQ) 与 [LuckyLilliaBot](https://github.com/LLOneBot/LuckyLilliaBot)：实验引擎及其 HTTP/WebSocket 接口参考。
+- [PMHQ](https://github.com/linyuchen/PMHQ) 与 [LuckyLilliaBot](https://github.com/LLOneBot/LuckyLilliaBot)：消息引擎及其接口参考。
 - [ClassIsland](https://github.com/ClassIsland/ClassIsland)：提醒、组件和自动化支持。
 
 QQListener 源代码采用 MIT 许可证，见 [LICENSE](LICENSE)。SnowLuma 采用其自身许可，不属于本项目 MIT 许可的授权范围。

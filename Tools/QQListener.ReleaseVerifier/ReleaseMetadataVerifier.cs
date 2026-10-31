@@ -33,7 +33,7 @@ public static class ReleaseMetadataVerifier
     private const int Zip64LocatorLength = 20;
     private const int Zip64EocdMinimumLength = 56;
     private static readonly string[] RequiredRootFiles =
-        ["manifest.yml", "QQListener.dll", "README.md", "CHANGELOG.md", "icon.png"];
+        ["manifest.yml", "QQListener.Loader.dll", "README.md", "CHANGELOG.md", "icon.png"];
     private static readonly Regex CanonicalVersionPattern = new(
         @"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$",
         RegexOptions.CultureInvariant);
@@ -85,7 +85,9 @@ public static class ReleaseMetadataVerifier
         string? tagVersion) =>
         VerificationResult.Combine(
             VerifyMetadata(rootPath, configuration, tagVersion),
-            VerifyPackage(rootPath, configuration));
+            VerifyPackage(rootPath, configuration),
+            File.Exists(Path.Combine(rootPath, "cipx", "QQListener.Download.cipx"))
+                ? VerifyPackage(rootPath, configuration, "QQListener.Download.cipx") : new VerificationResult([]));
 
     public static VerificationResult VerifyMetadata(
         string rootPath,
@@ -108,9 +110,9 @@ public static class ReleaseMetadataVerifier
         {
             var metadata = ReadManifest(Path.Combine(root, "manifest.yml"));
             manifestVersion = metadata.Version;
-            if (!string.Equals(metadata.EntranceAssembly, "QQListener.dll", StringComparison.Ordinal))
+            if (!string.Equals(metadata.EntranceAssembly, "QQListener.Loader.dll", StringComparison.Ordinal))
             {
-                errors.Add("manifest entranceAssembly must be exactly 'QQListener.dll'.");
+                errors.Add("manifest entranceAssembly must be exactly 'QQListener.Loader.dll'.");
             }
         });
         Try(errors, "project", () =>
@@ -146,7 +148,7 @@ public static class ReleaseMetadataVerifier
         return new VerificationResult(errors);
     }
 
-    public static VerificationResult VerifyPackage(string rootPath, string configuration)
+    public static VerificationResult VerifyPackage(string rootPath, string configuration, string filename = "QQListener.cipx")
     {
         var errors = new List<string>();
         var root = Path.GetFullPath(rootPath);
@@ -156,7 +158,7 @@ public static class ReleaseMetadataVerifier
             return new VerificationResult(errors);
         }
 
-        var cipxPath = Path.Combine(root, "cipx", "QQListener.cipx");
+        var cipxPath = Path.Combine(root, "cipx", filename);
         var checksumsPath = Path.Combine(root, "cipx", "checksums.md");
         Try(errors, "package", () =>
         {
@@ -212,14 +214,14 @@ public static class ReleaseMetadataVerifier
             RequireExpectedReleaseVersion(errors, "file", package.Dll.FileVersion);
             Try(errors, "release", () => ValidateReleaseMetadata(
                 Path.Combine(root, "Directory.Build.props"), projectVersion, package.Dll, null));
-            if (!string.Equals(package.Manifest.EntranceAssembly, "QQListener.dll", StringComparison.Ordinal))
+            if (!string.Equals(package.Manifest.EntranceAssembly, "QQListener.Loader.dll", StringComparison.Ordinal))
             {
-                errors.Add("archive manifest entranceAssembly must be exactly 'QQListener.dll'.");
+                errors.Add("archive manifest entranceAssembly must be exactly 'QQListener.Loader.dll'.");
             }
 
-            if (!string.Equals(package.Dll.SimpleName, "QQListener", StringComparison.Ordinal))
+            if (!string.Equals(package.Dll.SimpleName, "QQListener.Loader", StringComparison.Ordinal))
             {
-                errors.Add("archive DLL assembly name is not 'QQListener'.");
+                errors.Add("archive DLL assembly name is not 'QQListener.Loader'.");
             }
         }
 
@@ -448,7 +450,9 @@ public static class ReleaseMetadataVerifier
             }
 
             var manifest = ReadManifest(Path.Combine(extractionRoot, "manifest.yml"));
-            var dll = ReadDll(Path.Combine(extractionRoot, "QQListener.dll"));
+            var dll = ReadDll(Path.Combine(extractionRoot, "QQListener.Loader.dll"));
+            if (File.Exists(Path.Combine(extractionRoot, "core-seed.json"))) VerifyBundledCore(extractionRoot, dll);
+            else if (File.Exists(Path.Combine(extractionRoot, "QQListener.Core.zip"))) throw new IOException("Bundled core descriptor is missing.");
             return new PackageMetadata(manifest, dll);
         }
         finally
@@ -465,6 +469,57 @@ public static class ReleaseMetadataVerifier
                 }
             }
         }
+    }
+
+    private static void VerifyBundledCore(string root, DllMetadata loader)
+    {
+        var descriptor = Path.Combine(root, "core-seed.json");
+        if (new FileInfo(descriptor).Length > 16384) throw new IOException("Core descriptor too large.");
+        using var seed = JsonDocument.Parse(File.ReadAllBytes(descriptor));
+        var package = seed.RootElement.GetProperty("Package");
+        var zip = Path.Combine(root, "QQListener.Core.zip");
+        if (seed.RootElement.GetProperty("LoaderAbi").GetInt32() != 1
+            || seed.RootElement.GetProperty("Version").GetString() != loader.InformationalVersion
+            || !File.Exists(zip) || new FileInfo(zip).Length != package.GetProperty("Size").GetInt32())
+            throw new IOException("Invalid bundled core descriptor.");
+        using (var stream = File.OpenRead(zip))
+            if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(package.GetProperty("Sha256").GetString(), StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Bundled core SHA-256 mismatch.");
+        AuditArchiveDirectoryMetadata(zip);
+        using var archive = ZipFile.OpenRead(zip);
+        var manifestEntries = archive.Entries.Where(e => e.FullName == "runtime.json").ToArray();
+        if (manifestEntries.Length != 1 || manifestEntries[0].Length > MaxManifestBytes) throw new IOException("Invalid runtime manifest.");
+        using var data = new MemoryStream();
+        using (var input = manifestEntries[0].Open()) new ArchiveResourceBudget(MaxManifestBytes).CopyEntry(input, data, "runtime.json", MaxManifestBytes);
+        using var manifest = JsonDocument.Parse(data.ToArray());
+        if (manifest.RootElement.GetProperty("Version").GetString() != loader.InformationalVersion) throw new IOException("Core version mismatch.");
+        var files = manifest.RootElement.GetProperty("Files").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString());
+        if (!files.ContainsKey("QQListener.dll") || !files.ContainsKey("QQListener.deps.json")) throw new IOException("Core entrance is missing.");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var budget = CreateArchiveResourceBudget();
+        var actualBudget = CreateArchiveResourceBudget();
+        foreach (var entry in archive.Entries)
+        {
+            if (!TryCreateArchiveComparisonKey(entry.FullName, out var key) || !seen.Add(key)
+                || budget.AuditDeclared(entry.FullName, entry.Length, MaxEntryBytes) is not null)
+                throw new IOException("Unsafe bundled core archive.");
+            if (entry.FullName == "runtime.json") continue;
+            if (!files.Remove(entry.FullName, out var expected)) throw new IOException("Unknown core file.");
+            using var input = entry.Open();
+            using var bytes = new MemoryStream();
+            actualBudget.CopyEntry(input, bytes, entry.FullName, MaxEntryBytes);
+            if (!Convert.ToHexString(SHA256.HashData(bytes.ToArray())).Equals(expected, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Core file hash mismatch.");
+            if (entry.FullName == "QQListener.dll")
+            {
+                var dllPath = Path.Combine(root, "verified-core.dll");
+                File.WriteAllBytes(dllPath, bytes.ToArray());
+                var core = ReadDll(dllPath);
+                if (core.SimpleName != "QQListener" || core.AssemblyVersion != loader.AssemblyVersion)
+                    throw new IOException("Core assembly does not match the loader.");
+            }
+        }
+        if (files.Count != 0) throw new IOException("Core package is incomplete.");
     }
 
     private static void EnsureLeafFile(string path, string name)
@@ -927,7 +982,7 @@ public static class ReleaseMetadataVerifier
                                           or FormatException
                                           or InvalidDataException
                                           or BadImageFormatException
-                                          or XmlException)
+                                          or XmlException or JsonException or KeyNotFoundException)
         {
             errors.Add($"{category}: {exception.Message}");
         }

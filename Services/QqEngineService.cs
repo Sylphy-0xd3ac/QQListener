@@ -12,7 +12,8 @@ public sealed class QqEngineService(
     QqListenerSettings settings, MessageEventPipeline pipeline, ILessonStateProvider lesson,
     TimeProvider time, EngineCommandRouter commands, Func<CoreService>? createSnowCore = null,
     Func<IReadOnlyList<int>>? enumeratePids = null,
-    Func<IPmhqHost>? createPmhqHost = null) : BackgroundService, IQqNotificationPoller
+    Func<IPmhqHost>? createPmhqHost = null,
+    EngineInstallationService? installations = null) : BackgroundService, IQqNotificationPoller
 {
     private readonly EngineSwitchGuard _switch = new();
     private readonly object _gate = new();
@@ -58,6 +59,19 @@ public sealed class QqEngineService(
             // Engine switching leaves hooks resident until QQ exits; it never unmaps live callbacks.
             Core?.Stop(unloadOwned);
             Core?.Dispose();
+        }
+
+        public IReadOnlyCollection<int> StopForSwitch()
+        {
+            Stopped = true;
+            Lifetime.Cancel();
+            Source.Dispose();
+            IReadOnlyCollection<int> residual = [];
+            if (Core is not null) residual = Core.StopForEngineSwitch();
+            else if (!Starting && Host is not null && !Host.HasExited && !Host.TryDetach()) residual = [PmhqPid];
+            Host?.Dispose();
+            Core?.Dispose();
+            return residual;
         }
     }
 
@@ -111,17 +125,26 @@ public sealed class QqEngineService(
         if (_selected != wanted)
         {
             var livePids = EnumeratePids();
-            if (_selected is not null) _switch.RequireRestart(livePids);
-            else if (OperatingSystem.IsWindows())
+            if (_selected is not null)
             {
-                if (HookPipeProbe.Exists("pmhq_sign")) _switch.RequireRestart(livePids);
+                Session? previous;
+                lock (_gate) { previous = _current; _current = null; }
+                if (previous is not null)
+                {
+                    commands.TryUnbind(previous.Epoch);
+                    _switch.RequireRestart(previous.StopForSwitch());
+                }
+                pipeline.ClearState();
+            }
+            if (OperatingSystem.IsWindows())
+            {
                 var bundle = new PmhqBundle(KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory));
                 foreach (var pid in livePids)
                 {
                     try
                     {
                         using var process = System.Diagnostics.Process.GetProcessById(pid);
-                        if (bundle.HasResidentHook(pid, process.StartTime.ToUniversalTime().Ticks))
+                        if (PmhqHost.HasResidentHook(bundle, pid, process.StartTime.ToUniversalTime().Ticks))
                             _switch.RequireRestart([pid]);
                     }
                     catch (Exception error) when (error is ArgumentException or InvalidOperationException
@@ -176,8 +199,8 @@ public sealed class QqEngineService(
         if (wanted == ListenerEngine.PMHQ && pids.Count != 1)
         {
             CoreRuntime.Set(CoreRuntimeState.Waiting, pids.Count == 0
-                ? "PMHQ 实验引擎：请先启动并登录一个 QQ 主进程"
-                : "PMHQ 实验引擎暂不支持多个 QQ 主进程");
+                ? "请先启动并登录 QQ"
+                : "PMHQ 当前仅支持连接一个 QQ 主进程");
             return;
         }
         session = CreateSession(wanted);
@@ -190,9 +213,10 @@ public sealed class QqEngineService(
             {
                 session.PmhqPid = pids[0];
                 session.Host = createPmhqHost?.Invoke()
-                    ?? new PmhqHost(new PmhqBundle(KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory)));
+                    ?? new PmhqHost(new PmhqBundle(KernelLocator.ResolveNativeDirectory(settings.SettingsDirectory)),
+                        installations is null ? null : installations.PreparePmhqAsync);
                 session.Starting = true;
-                CoreRuntime.Set(CoreRuntimeState.Waiting, "正在准备 PMHQ v9.0.6；首次使用需要下载并应用补丁");
+                CoreRuntime.Set(CoreRuntimeState.Waiting, "正在准备 PMHQ，可在内核管理中查看进度");
                 session.ReceiveTask = Task.Run(() => StartPmhqAsync(session));
             }
             catch { StopCurrent(); throw; }
@@ -340,10 +364,10 @@ public sealed class QqEngineService(
                 var initialized = session.Host!.NativeInitialized;
                 var ready = health.LoggedIn && initialized && client.IsConnected;
                 CoreRuntime.Set(ready ? CoreRuntimeState.Connected : CoreRuntimeState.Waiting,
-                    ready ? "PMHQ 本机引擎已连接，无需启动凭证"
+                    ready ? "PMHQ 已连接"
                         : health.LoggedIn ? initialized ? "PMHQ 内核就绪，等待本机接收管道"
-                            : "PMHQ 正在初始化 QQ 内核；暂不发送回复及凭证请求"
-                        : "PMHQ 正在等待本机 QQ 登录及消息，无需启动凭证", health.Pid);
+                            : "PMHQ 正在初始化"
+                        : "PMHQ 正在等待 QQ 登录及消息", health.Pid);
             }
         }
     }

@@ -205,7 +205,7 @@ public sealed class EngineLifecycleTests
             {
                 Interlocked.Increment(ref created);
                 return new CoreService(enumeratePids: () => Volatile.Read(ref pids), findBinary: () => "fixture.dll",
-                    injectFunc: (_, _) => new MapHandle(0x1000, 0, 0, 0x1000), unloadFunc: (_, _) => { },
+                    injectFunc: (_, _) => new MapHandle(0x1000, 0, 0, 0x1000), unloadFunc: (_, _) => throw new IOException("still active"),
                     hookActive: _ => false, recheckMainProcess: _ => true, supported: true);
             }, enumeratePids: () => Volatile.Read(ref pids));
         try

@@ -54,6 +54,11 @@ jobs:
         shell: bash
         run: bash Tests/Release/run.sh
 
+      - name: Verify PMHQ with the Windows system loader and native TLS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./Tools/VerifyPmhqNative.ps1
+
       - name: Verify branch metadata
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type != 'tag'
         run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --metadata-only
@@ -64,7 +69,7 @@ jobs:
 
       - name: Build CIPX
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
-        run: dotnet build QQListener.csproj --configuration Release --no-restore -p:CreateCipx=true -p:ContinuousIntegrationBuild=true
+        run: dotnet build QQListener.csproj --configuration Release --no-restore -p:CreateCipx=true -p:ContinuousIntegrationBuild=true -p:RuntimeBuildNumber=${{ github.run_number }}
 
       - name: Verify clean install package
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type != 'tag'
@@ -74,6 +79,10 @@ jobs:
         if: runner.os == 'Windows' && github.event_name != 'pull_request' && github.ref_type == 'tag'
         run: dotnet run --project Tools/QQListener.ReleaseVerifier/QQListener.ReleaseVerifier.csproj --configuration Release --no-build --no-restore -- --root . --configuration Release --tag "$env:RELEASE_TAG"
 
+      - name: Verify loader bootstrap and isolated core
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
+        run: dotnet run --project Tools/QQListener.LoaderVerifier --configuration Release --no-build --no-restore -- cipx/QQListener.cipx
+
       - name: Upload plugin package
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
@@ -82,6 +91,9 @@ jobs:
           if-no-files-found: error
           path: |
             cipx/QQListener.cipx
+            cipx/QQListener.Download.cipx
+            cipx/QQListener.Core.zip
+            cipx/core-release.json
             cipx/checksums.md
 
       - name: Upload verification evidence
@@ -93,6 +105,7 @@ jobs:
           path: |
             artifacts/test-results/*.trx
             artifacts/ui-previews/*.png
+            artifacts/native-probe/result.txt
 
   release:
     name: Publish GitHub Release
@@ -122,3 +135,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: bash Tools/PublishRelease.sh release
+
+  runtime:
+    name: Publish automatic runtime build
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.repository == 'Sylphy-0xd3ac/QQListener'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: runtime-builds
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: QQListener-${{ github.sha }}
+          path: release
+      - name: Publish signed catalog and payloads
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNTIME_SIGNING_KEY: ${{ secrets.RUNTIME_SIGNING_KEY }}
+        run: bash Tools/PublishRuntime.sh release

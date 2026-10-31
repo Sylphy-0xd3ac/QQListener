@@ -28,7 +28,7 @@ if [[ $version_without_metadata == *-* ]]; then
 fi
 
 package_directory="${1:-release}"
-for asset in QQListener.cipx checksums.md; do
+for asset in QQListener.cipx QQListener.Download.cipx checksums.md; do
     if [[ ! -s "$package_directory/$asset" ]]; then
         printf 'Missing release asset: %s\n' "$asset" >&2
         exit 1
@@ -73,6 +73,6 @@ else
         --title "$release_title" --notes-file "$notes_file" "${release_flags[@]}"
 fi
 
-gh release upload "$RELEASE_TAG" "$package_directory/QQListener.cipx" "$package_directory/checksums.md" \
+gh release upload "$RELEASE_TAG" "$package_directory/QQListener.cipx" "$package_directory/checksums.md" "$package_directory/QQListener.Download.cipx" \
     --repo "$GITHUB_REPOSITORY" --clobber
 gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${release_flags[@]}"

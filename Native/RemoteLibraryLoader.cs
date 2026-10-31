@@ -7,6 +7,10 @@ internal static class RemoteLibraryLoader
 {
     public static ulong Load(string path, Func<uint, ulong> allocate, Action<ulong, byte[]> write,
         Func<ulong, ulong> loadLibrary, Action<ulong> free)
+        => LoadWithError(path, allocate, write, argument => new(loadLibrary(argument), 0), free);
+
+    public static ulong LoadWithError(string path, Func<uint, ulong> allocate, Action<ulong, byte[]> write,
+        Func<ulong, RemoteCallResult> loadLibrary, Action<ulong> free)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Contains('\0'))
             throw new ArgumentException("DLL 路径无效", nameof(path));
@@ -17,9 +21,9 @@ internal static class RemoteLibraryLoader
         try
         {
             write(argument, encoded);
-            var module = loadLibrary(argument);
-            if (module == 0) throw new InjectionError($"目标进程 LoadLibraryW 失败: {path}");
-            return module; // HMODULE is 64-bit; a remote thread exit code would truncate it.
+            var result = loadLibrary(argument);
+            if (result.Value == 0) throw new RemoteLibraryLoadException(path, result.LastError);
+            return result.Value;
         }
         catch (RemoteCallTimeoutException)
         {

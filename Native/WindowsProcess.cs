@@ -135,41 +135,22 @@ public sealed class WindowsProcess : IRemoteMemory, IDisposable
     {
         if (function == 0) throw new InjectionError("远程调用地址为空");
         if (args.Length > 4) throw new ArgumentException("x64 远程调用最多支持四个寄存器参数");
-        var padded = new ulong[4];
-        args.CopyTo(padded, 0);
+        return RemoteCallCore(function, 0, args).Value;
+    }
 
+    private RemoteCallResult RemoteCallCore(ulong function, ulong getLastError, params ulong[] args)
+    {
         var allocation = Alloc(0x1000, protection: Injector.PageExecuteReadWrite);
         if (allocation == 0) ThrowLastError("VirtualAllocEx(remote call)");
         var resultAddress = allocation + 0x200;
-
-        ReadOnlySpan<byte[]> registerLoads =
-        [
-            [0x48, 0xB9], // mov rcx, imm64
-            [0x48, 0xBA], // mov rdx, imm64
-            [0x49, 0xB8], // mov r8,  imm64
-            [0x49, 0xB9], // mov r9,  imm64
-        ];
-
-        var code = new List<byte> { 0x48, 0x83, 0xEC, 0x28 }; // sub rsp, 0x28 (shadow space + 对齐)
-        for (var i = 0; i < 4; i++)
-        {
-            code.AddRange(registerLoads[i]);
-            code.AddRange(BitConverter.GetBytes(padded[i]));
-        }
-        code.AddRange([0x48, 0xB8]);                       // mov rax, function
-        code.AddRange(BitConverter.GetBytes(function));
-        code.AddRange([0xFF, 0xD0]);                        // call rax
-        code.AddRange([0x49, 0xBB]);                        // mov r11, result_address
-        code.AddRange(BitConverter.GetBytes(resultAddress));
-        code.AddRange([0x49, 0x89, 0x03]);                  // mov [r11], rax
-        code.AddRange([0x48, 0x83, 0xC4, 0x28, 0xC3]);       // add rsp, 0x28; ret
+        var code = RemoteCallCode.Build(function, resultAddress, getLastError, args);
 
         IntPtr thread = IntPtr.Zero;
         var completed = false;
         try
         {
-            Write(allocation, [.. code]);
-            Flush(allocation, (uint)code.Count);
+            Write(allocation, code);
+            Flush(allocation, (uint)code.Length);
 
             thread = NativeMethods.CreateRemoteThread(
                 _handle, IntPtr.Zero, UIntPtr.Zero, (nuint)allocation, IntPtr.Zero, 0, out _);
@@ -183,7 +164,13 @@ public sealed class WindowsProcess : IRemoteMemory, IDisposable
                     $"无法确认远程线程结束（wait=0x{waitResult:x}）；保留调用页和参数以避免目标进程崩溃");
 
             completed = true;
-            return BitConverter.ToUInt64(Read(resultAddress, 8));
+            var result = Read(resultAddress, 16);
+            if (BitConverter.ToUInt32(result, 12) != 1)
+            {
+                NativeMethods.GetExitCodeThread(thread, out var exitCode);
+                throw new RemoteCallTimeoutException($"远程线程未完成调用，退出码 0x{exitCode:x8}；保留内核状态，避免重复装载");
+            }
+            return new(BitConverter.ToUInt64(result, 0), BitConverter.ToUInt32(result, 8));
         }
         finally
         {
@@ -248,6 +235,8 @@ public sealed class WindowsProcess : IRemoteMemory, IDisposable
         return RemoteEquivalent((ulong)localAddress);
     }
 
+    public bool HasModule(string name) => ModuleEntries().ContainsKey(Path.GetFileName(name).ToLowerInvariant());
+
     public ulong EnsureModule(string moduleName)
     {
         var key = Path.GetFileName(moduleName).ToLowerInvariant();
@@ -273,8 +262,9 @@ public sealed class WindowsProcess : IRemoteMemory, IDisposable
     private ulong LoadLibraryInTarget(string name)
     {
         var entry = LoadLibraryAddress();
-        return RemoteLibraryLoader.Load(name, size => Alloc(size), Write,
-            argument => RemoteCall(entry, argument), Free);
+        var getLastError = TargetApi("kernel32.dll", "GetLastError");
+        return RemoteLibraryLoader.LoadWithError(name, size => Alloc(size), Write,
+            argument => RemoteCallCore(entry, getLastError, argument), Free);
     }
 
     public ulong ResolveImport(string module, byte[]? name, int? ordinal)
@@ -352,6 +342,10 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetExitCodeThread(IntPtr thread, out uint exitCode);
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     public static extern IntPtr GetModuleHandleW(string? lpModuleName);

@@ -1,6 +1,6 @@
 # QQListener
 
-ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消息，也可在调试区选择按需下载的 PMHQ 实验引擎。
+ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消息，也可在内核管理中切换为 PMHQ。
 
 [下载](https://github.com/Sylphy-0xd3ac/QQListener/releases) · [更新日志](https://github.com/Sylphy-0xd3ac/QQListener/blob/main/CHANGELOG.md) · [问题反馈](https://github.com/Sylphy-0xd3ac/QQListener/issues)
 
@@ -10,24 +10,40 @@ ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消�
 
 1. 安装并登录 NT QQ。
 2. 在 ClassIsland 的插件管理中从本地安装 `.cipx`，重启 ClassIsland。
-3. 打开插件设置，在「高级设置 → 重新触发安装向导」中安装 SnowLuma 内核。安装前需阅读并接受其许可。
+3. 首次启动自动打开安装向导，默认安装 SnowLuma 和 PMHQ；安装前需阅读并接受 SnowLuma 许可。
 4. 开启监听并设置消息规则，确认接收管道已连接，再发送测试消息。
 
 内核安装后会自动装载，无需每次手动操作。“核心映像已映射”只表示装载阶段完成，不代表消息接收已经连通。
 
-### PMHQ 实验引擎
+### 消息引擎
 
-在设置底部「调试 → 消息引擎」选择 PMHQ。确认实验性提示后，退出并重启 QQ；旧 QQ 进程退出前，插件会等待，不会同时装载两套钩子。切回 SnowLuma 同样需要重启 QQ。
+在「内核管理」选择 SnowLuma 或 PMHQ。「检查更新内核」打开独立窗口，显示两者的已安装版本、最新版本和下载进度；取消按钮停止当前下载。下载代理同时用于 GitHub API、核心、内核和补丁下载，留空直连 GitHub。
 
-首次使用时从官方固定下载 PMHQ v9.0.6 Windows x64 包（约 14 MB），依次校验下载包和原始 DLL，应用内置差分补丁后再校验结果。插件不再携带完整 PMHQ DLL，也不会解压或启动原 EXE。下载使用设置中的 GitHub 加速代理；失败可点击「重新检查」重试。已安装且校验通过的 DLL 可离线使用，缓存的原版 DLL 可用于修复损坏文件。
+首次安装向导默认安装两个引擎，日常只运行选中的一个。需要重新安装时，从「调试 → 重新触发安装向导」进入。自动更新在下次连接时使用新安装的引擎版本。
 
-无需填写 `auth_token`，也不需要 manager、独立启动器或本机 HTTP 服务。插件直接装载 DLL，通过当前用户的命名管道与所选 QQ 通信。初始化在本机完成，发包由 QQ 自身处理。
+PMHQ 更新先确认官方版本，再查找本仓库签名清单中的适配记录。记录必须包含匹配的原始包、补丁、输出 DLL 哈希和宿主接口版本；没有适配记录时保留已安装版本。下载过程不会解压或运行官方启动器，已校验的 DLL 和补丁缓存可离线复用。
 
-选择 PMHQ 并重启 QQ 后会自动连接；可点击「重新检查」重试。「打开 PMHQ 内核目录」用于查看已安装文件，不触发下载。旧版的 `pmhq_config.json` 不再读取；更新内核不删除用户原有配置文件。此功能尚未完成原生 Windows、真实 QQ 注入及发包验收。
+从 SnowLuma 切换时，插件尝试卸载自己装载的钩子并检查管道是否关闭；外部钩子或未完成的调用会阻止继续装载。PMHQ 目前没有经过确认的安全退出接口，从 PMHQ 切出、退出登录或换号时仍需重启 QQ。插件不会结束 QQ 进程。
 
-该模式只连接一个 QQ 主进程，不接管外部 PMHQ，也不与 LLBot 已启动的 PMHQ 共用实例。停止连接会关闭管道，原生钩子保留至 QQ 退出，不会结束 QQ。QQ 退出登录或切换账号后，需要重启 QQ 重新建立会话。
+PMHQ 目前连接一个 QQ 主进程，使用 QQ 进程内命令管道。静态检查及隔离测试不等于真实 Windows QQ 的收发验收；连接成功只表示当前管道可用。遇到装载失败，请提供完整 `Win32=...` 错误码：126 通常涉及依赖解析，193 是映像格式错误，1114 表示 DLL 初始化失败。没有实际日志时不能据此确定具体原因。
 
-状态显示“PMHQ 本机引擎已连接”表示内核初始化、本机管道以及已观察到的账号记录可用，不代表真实消息发送已经验收。账号记录是 DLL 最近捕获的 UIN，不能作为实时退出或换号查询，因此退出登录或切换账号后须重启 QQ。内核未初始化时不发送回复和图片凭证请求。调用链及限制见[发包与签名审查](reviews/pmhq-signing.md)，完整范围见[双引擎 review](reviews/dual-engine.md)。
+### QQListener 核心更新
+
+`QQListener.cipx` 内置业务核心；`QQListener.Download.cipx` 只包含 Loader。两个包安装的是同一个插件，选择其中一个即可。首次启动后核心保存在插件配置目录的 `runtime/versions/`，配置和消息引擎保存在该目录之外。
+
+默认从 `Sylphy-0xd3ac/QQListener` 的 `runtime-builds` Release 获取通过构建检查的核心。下载先验证签名与 SHA-256，再安装到新的版本目录；切换在启动 ClassIsland 时进行。网络不可用时继续加载本地核心；新核心加载失败后，下次启动回退到上一可用版本。
+
+内核管理中的「检查核心更新」可提前下载更新，重启 ClassIsland 后生效。关闭「启动时自动更新」可固定当前核心。下载版首次启动前若需要代理，可在插件配置目录创建 `loader-settings.json`：
+
+```json
+{
+  "CatalogUrl": "https://github.com/Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/catalog.json",
+  "Proxy": "https://你的-ghproxy-地址",
+  "AutoUpdate": true
+}
+```
+
+加载记录位于同目录的 `loader.log`。Loader 自身及宿主接口变更仍通过 CIPX 更新。
 
 ## 配置
 
@@ -91,7 +107,7 @@ ClassIsland 的 QQ 消息提醒插件。默认通过 SnowLuma 接收 NT QQ 消�
 
 ### 已装载内核，但收不到消息
 
-确认 QQ 已登录、监听已开启，并查看接收管道状态。若一直等待管道，在高级设置中重新触发安装向导；同时检查最近的忽略原因，排除消息规则或“排除自己发送的消息”的影响。
+确认 QQ 已登录、监听已开启，并查看接收管道状态。若一直等待管道，在调试中重新触发安装向导；同时检查最近的忽略原因，排除消息规则或“排除自己发送的消息”的影响。
 
 ### 上课或暂停后没有提醒
 

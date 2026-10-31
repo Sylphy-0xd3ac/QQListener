@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:QQListener.Views.SettingsPages"
+        x:Class="QQListener.Views.Windows.EngineDownloadWindow"
+        x:DataType="vm:KernelSetupViewModel"
+        Title="QQListener 内核管理" Width="560" Height="640" MinWidth="460" MinHeight="420"
+        WindowStartupLocation="CenterOwner">
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="12">
+            <TextBlock Text="SnowLuma" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock><Run Text="已安装：" /><Run Text="{Binding CurrentVersionText}" /><Run Text="　最新：" /><Run Text="{Binding LatestVersionText}" /></TextBlock>
+            <ProgressBar Minimum="0" Maximum="100" Value="{Binding SnowDownloadProgress}" />
+            <TextBlock Text="{Binding SnowDownloadStatus}" TextWrapping="Wrap" />
+            <TextBlock Text="PMHQ" FontSize="20" FontWeight="SemiBold" Margin="0,12,0,0" />
+            <TextBlock><Run Text="已安装：" /><Run Text="{Binding PmhqCurrentVersion}" /><Run Text="　最新：" /><Run Text="{Binding PmhqLatestVersion}" /></TextBlock>
+            <ProgressBar Minimum="0" Maximum="100" Value="{Binding PmhqDownloadProgress}" />
+            <TextBlock Text="{Binding PmhqDownloadStatus}" TextWrapping="Wrap" />
+            <TextBlock Text="下载代理（留空直连 GitHub）" Margin="0,12,0,0" />
+            <TextBox Text="{Binding DownloadProxy}" Watermark="https://你的 ghproxy 地址" />
+            <WrapPanel Orientation="Horizontal">
+                <Button Content="EULA" Command="{Binding ViewLegalTextCommand}" CommandParameter="eula" />
+                <Button Content="LICENSE" Command="{Binding ViewLegalTextCommand}" CommandParameter="license" />
+                <Button Content="隐私说明" Command="{Binding ViewLegalTextCommand}" CommandParameter="privacy" />
+            </WrapPanel>
+            <TextBox Text="{Binding LegalText}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="150" />
+            <CheckBox Content="已阅读并同意 SnowLuma 的 EULA / LICENSE / 隐私说明" IsChecked="{Binding EulaAccepted}" />
+            <WrapPanel Orientation="Horizontal">
+                <Button Content="检查更新内核" Command="{Binding CheckUpdateCommand}" IsEnabled="{Binding IsNotBusy}" />
+                <Button Content="安装 / 更新" Command="{Binding DownloadCommand}" IsEnabled="{Binding IsNotBusy}" />
+                <Button Content="取消下载" Command="{Binding CancelDownloadCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

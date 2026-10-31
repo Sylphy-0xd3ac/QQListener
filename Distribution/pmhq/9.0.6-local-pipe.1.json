@@ -1,0 +1,20 @@
+{
+  "UpstreamVersion": "9.0.6",
+  "RuntimeVersion": "9.0.6-local-pipe.1",
+  "HostAbi": 1,
+  "Archive": {
+    "Url": "https://github.com/linyuchen/PMHQ/releases/download/v9.0.6/pmhq-win-x64.zip",
+    "Sha256": "64da6159976aee0eb1b67bc0c82ca3c540d9bfd4a41cc17d5a308e24dbfd7587",
+    "Size": 14533737
+  },
+  "OriginalSha256": "345a8fc083f08968a73c237441c6b56010757f613857bc96cec7449623e46ae4",
+  "OriginalSize": 1034752,
+  "Patch": {
+    "Url": "https://github.com/Sylphy-0xd3ac/QQListener/releases/download/runtime-builds/pmhq-6eea307e7f5495093bff6ab920de12afd627d287581b662f99d497ea5a522995.patch",
+    "Sha256": "6eea307e7f5495093bff6ab920de12afd627d287581b662f99d497ea5a522995",
+    "Size": 41788
+  },
+  "OutputSha256": "2c667c5bda5e517fd7b97afe21627f23178a68cd18ccc523375ed7935b3ed78b",
+  "OutputSize": 1076224,
+  "Layout": { "InitializedRva": 1005297, "AccountRva": 995800 }
+}

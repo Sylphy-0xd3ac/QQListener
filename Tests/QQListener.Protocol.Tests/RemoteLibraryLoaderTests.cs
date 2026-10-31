@@ -8,6 +8,33 @@ namespace QQListener.Protocol.Tests;
 public sealed class RemoteLibraryLoaderTests
 {
     [Fact]
+    public void ErrorFromTheRemoteLoaderIsPreserved()
+    {
+        var freed = false;
+        var error = Assert.Throws<RemoteLibraryLoadException>(() => RemoteLibraryLoader.LoadWithError("bad.dll",
+            _ => 0x1000, (_, _) => { }, _ => new(0, 1114), _ => freed = true));
+        Assert.Equal(1114u, error.Win32Error);
+        Assert.Contains("Win32=1114", error.Message);
+        Assert.True(freed);
+    }
+
+    [Fact]
+    public void WindowsSystemLoaderCapturesBadImageErrorInTheCallingThread()
+    {
+        if (!OperatingSystem.IsWindows() || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+            != System.Runtime.InteropServices.Architecture.X64) return;
+        var path = Path.Combine(Path.GetTempPath(), "QQListener-坏映像-" + Guid.NewGuid().ToString("N") + ".dll");
+        File.WriteAllText(path, "not a PE image");
+        try
+        {
+            using var process = new WindowsProcess(Environment.ProcessId);
+            var error = Assert.Throws<RemoteLibraryLoadException>(() => { if (OperatingSystem.IsWindows()) process.LoadLibraryFile(path); });
+            Assert.Equal(193u, error.Win32Error);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void ImagesWithStaticTlsCannotUseTheManualMapper()
     {
         var bytes = PortableExecutableTests.BuildProbeImage();
@@ -56,7 +83,7 @@ public sealed class RemoteLibraryLoaderTests
     public void FailedLoadOrWriteReleasesUnusedPathMemory(bool writeFails)
     {
         var freed = false;
-        Assert.Throws<InjectionError>(() => RemoteLibraryLoader.Load("fixture.dll", _ => 0x1000,
+        Assert.ThrowsAny<InjectionError>(() => RemoteLibraryLoader.Load("fixture.dll", _ => 0x1000,
             (_, _) => { if (writeFails) throw new InjectionError("write failed"); }, _ => 0, _ => freed = true));
         Assert.True(freed);
     }

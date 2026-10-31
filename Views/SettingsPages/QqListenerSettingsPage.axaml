@@ -20,7 +20,7 @@
     <ScrollViewer>
         <StackPanel Classes="settings-container animated-intro" Spacing="4">
 
-            <!-- 当前引擎运行状态；SnowLuma 独立安装，PMHQ 为按需下载的实验选项。 -->
+            <!-- 当前引擎运行状态 -->
             <TextBlock FontSize="18"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
@@ -66,14 +66,31 @@
             </Border>
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xEDCD;}"
-                                       Header="高级设置"
-                                       Description="积压上限、重新触发安装向导与卸载内核。">
+                                       Header="内核管理"
+                                       Description="{Binding EngineDescription}">
                 <controls:SettingsExpander.Items>
-                    <controls:SettingsExpanderItem Content="重新触发安装向导"
-                        Description="安装、更新 SnowLuma 并阅读其许可。PMHQ 在底部调试区启用，首次使用自动下载。">
+                    <controls:SettingsExpanderItem Content="消息引擎">
                         <controls:SettingsExpanderItem.Footer>
-                            <Button Content="重新触发安装向导" Click="OnOpenKernelWizardClick"
-                                    IsEnabled="{Binding KernelSetup.IsSupported}" />
+                            <ComboBox ItemsSource="{Binding EngineNames}" SelectedIndex="{Binding SelectedEngineIndex, Mode=TwoWay}"
+                                      IsEnabled="{Binding KernelSetup.IsSupported}" MinWidth="180" />
+                        </controls:SettingsExpanderItem.Footer>
+                    </controls:SettingsExpanderItem>
+                    <controls:SettingsExpanderItem Content="内核版本与下载" Description="查看 SnowLuma 和 PMHQ 的安装状态、下载进度与可用版本。">
+                        <controls:SettingsExpanderItem.Footer>
+                            <Button Content="检查更新内核" Click="OnOpenEngineDownloadsClick" IsEnabled="{Binding KernelSetup.IsSupported}" />
+                        </controls:SettingsExpanderItem.Footer>
+                    </controls:SettingsExpanderItem>
+                    <controls:SettingsExpanderItem Content="QQListener 核心" Description="{Binding KernelSetup.CoreUpdateStatus}">
+                        <controls:SettingsExpanderItem.Footer>
+                            <StackPanel Spacing="8">
+                                <ToggleSwitch Content="启动时自动更新" IsChecked="{Binding KernelSetup.AutoUpdateCore}" />
+                                <Button Content="检查核心更新" Command="{Binding KernelSetup.UpdateCoreCommand}" IsEnabled="{Binding KernelSetup.IsNotBusy}" />
+                            </StackPanel>
+                        </controls:SettingsExpanderItem.Footer>
+                    </controls:SettingsExpanderItem>
+                    <controls:SettingsExpanderItem Content="自动更新消息引擎" Description="启动时检查 SnowLuma 和 PMHQ；PMHQ 仅安装已有适配的版本。已装载的引擎在下次连接时使用新版本。">
+                        <controls:SettingsExpanderItem.Footer>
+                            <ToggleSwitch IsChecked="{Binding Settings.AutoUpdateEngines, Mode=TwoWay}" />
                         </controls:SettingsExpanderItem.Footer>
                     </controls:SettingsExpanderItem>
 
@@ -90,7 +107,7 @@
                     <controls:SettingsExpanderItem
                         IconSource="{ci:FluentIconSource Glyph=&#xEDCF;}"
                         Content="卸载内核"
-                        Description="把钩子从 QQ 进程里摘掉，之后要重新注入才能继续收消息。先勾选确认才能点。">
+                        Description="断开引擎并尝试卸载；仍有驻留钩子时需要重启 QQ。">
                         <controls:SettingsExpanderItem.Footer>
                             <WrapPanel Orientation="Horizontal">
                                 <CheckBox Content="我知道后果" IsChecked="{Binding KernelSetup.ConfirmUnload}" />
@@ -421,25 +438,10 @@
                 </controls:SettingsExpander.Footer>
             </controls:SettingsExpander>
 
-            <controls:SettingsExpander Header="消息引擎"
-                                       Description="{Binding EngineDescription}">
+            <controls:SettingsExpander Header="安装向导" Description="重新安装或修复 SnowLuma 和 PMHQ。">
                 <controls:SettingsExpander.Footer>
-                    <ComboBox ItemsSource="{Binding EngineNames}"
-                              SelectedIndex="{Binding SelectedEngineIndex, Mode=TwoWay}"
-                              IsEnabled="{Binding KernelSetup.IsSupported}" MinWidth="200" />
+                    <Button Content="重新触发安装向导" Click="OnOpenKernelWizardClick" IsEnabled="{Binding KernelSetup.IsSupported}" />
                 </controls:SettingsExpander.Footer>
-                <controls:SettingsExpander.Items>
-                    <controls:SettingsExpanderItem IsVisible="{Binding IsPmhqSelected}">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="实验性功能：无需启动凭证，使用本机 QQ；真实 QQ 发包尚未验证。切换后请重启 QQ。"
-                                       TextWrapping="Wrap" Foreground="#D29922" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="打开 PMHQ 内核目录" Click="OnOpenPmhqConfigurationClick" />
-                                <Button Content="重新检查" Click="OnRecheckPmhqClick" />
-                            </StackPanel>
-                        </StackPanel>
-                    </controls:SettingsExpanderItem>
-                </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
 
             <controls:SettingsExpander IconSource="{ci:FluentIconSource Glyph=&#xE161;}"

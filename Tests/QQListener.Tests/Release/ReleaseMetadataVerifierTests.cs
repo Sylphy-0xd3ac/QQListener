@@ -126,7 +126,7 @@ public sealed class ReleaseMetadataVerifierTests
         using var fixture = ReleaseFixture.Create();
         File.WriteAllText(
             fixture.File("manifest.yml"),
-            "id: QQListener\nversion: 1.0.2.0\nversion: 1.0.2.0\nentranceAssembly: QQListener.dll\n");
+            "id: QQListener\nversion: 1.0.2.0\nversion: 1.0.2.0\nentranceAssembly: QQListener.Loader.dll\n");
 
         var result = ReleaseMetadataVerifier.VerifyMetadata(
             fixture.Path,
@@ -174,7 +174,7 @@ public sealed class ReleaseMetadataVerifierTests
 
     [Theory]
     [InlineData("manifest.yml")]
-    [InlineData("QQListener.dll")]
+    [InlineData("QQListener.Loader.dll")]
     [InlineData("README.md")]
     [InlineData("CHANGELOG.md")]
     [InlineData("icon.png")]
@@ -323,8 +323,8 @@ public sealed class ReleaseMetadataVerifierTests
     [Theory]
     [InlineData("subdir/manifest.yml")]
     [InlineData("MANIFEST.YML")]
-    [InlineData("subdir/QQListener.dll")]
-    [InlineData("qqlistener.DLL")]
+    [InlineData("subdir/QQListener.Loader.dll")]
+    [InlineData("qqlistener.LOADER.DLL")]
     [InlineData("subdir/README.md")]
     [InlineData("readme.MD")]
     [InlineData("subdir/CHANGELOG.md")]
@@ -758,7 +758,7 @@ public sealed class ReleaseMetadataVerifierTests
         const string secret = "TOP-SECRET-MANIFEST-CONTENT";
         using var fixture = ReleaseFixture.Create();
         fixture.RebuildArchive(manifestOverride:
-            $"id: QQListener\nversion: {secret}\nentranceAssembly: QQListener.dll\n");
+            $"id: QQListener\nversion: {secret}\nentranceAssembly: QQListener.Loader.dll\n");
 
         var result = ReleaseMetadataVerifier.VerifyPackage(fixture.Path, "Release");
 
@@ -852,7 +852,7 @@ public sealed class ReleaseMetadataVerifierTests
     private static string ManifestWithExactSize(int size)
     {
         const string prefix =
-            "id: QQListener\nversion: 2.3.0.2\nentranceAssembly: QQListener.dll\n#";
+            "id: QQListener\nversion: 2.3.0.2\nentranceAssembly: QQListener.Loader.dll\n#";
         Assert.True(prefix.Length <= size);
         return prefix + new string('x', size - prefix.Length);
     }
@@ -978,7 +978,7 @@ public sealed class ReleaseMetadataVerifierTests
                 $"QQListener.ReleaseVerifier.Tests.{Guid.NewGuid():N}");
             Directory.CreateDirectory(path);
             var manifest =
-                $"id: QQListener\nversion: {version}\nentranceAssembly: QQListener.dll\n";
+                $"id: QQListener\nversion: {version}\nentranceAssembly: QQListener.Loader.dll\n";
             System.IO.File.WriteAllText(
                 System.IO.Path.Combine(path, "manifest.yml"),
                 manifest);
@@ -994,6 +994,7 @@ public sealed class ReleaseMetadataVerifierTests
             Directory.CreateDirectory(buildDirectory);
             var buildDll = System.IO.Path.Combine(buildDirectory, "QQListener.dll");
             System.IO.File.Copy(embeddedDllPath ?? typeof(Plugin).Assembly.Location, buildDll);
+            System.IO.File.Copy(embeddedDllPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "QQListener.Loader.dll"), buildDll + ".loader");
 
             Directory.CreateDirectory(System.IO.Path.Combine(path, "cipx"));
             var fixture = new ReleaseFixture(
@@ -1020,9 +1021,9 @@ public sealed class ReleaseMetadataVerifierTests
             {
                 var manifest = manifestOverride ?? _manifest;
                 WriteRequiredText(archive, "manifest.yml", manifest, excludedEntry);
-                if (!string.Equals(excludedEntry, "QQListener.dll", StringComparison.Ordinal))
+                if (!string.Equals(excludedEntry, "QQListener.Loader.dll", StringComparison.Ordinal))
                 {
-                    var dllEntry = archive.CreateEntry("QQListener.dll");
+                    var dllEntry = archive.CreateEntry("QQListener.Loader.dll");
                     using var output = dllEntry.Open();
                     if (_corruptEmbeddedDll)
                     {
@@ -1030,7 +1031,7 @@ public sealed class ReleaseMetadataVerifierTests
                     }
                     else
                     {
-                        using var input = System.IO.File.OpenRead(_buildDll);
+                        using var input = System.IO.File.OpenRead(_buildDll + ".loader");
                         input.CopyTo(output);
                     }
                 }

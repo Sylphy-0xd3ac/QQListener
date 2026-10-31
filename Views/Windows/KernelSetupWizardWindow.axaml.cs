@@ -74,7 +74,7 @@ public partial class KernelSetupWizardWindow : Window, INotifyPropertyChanged
     public bool CanGoNext => _step switch
     {
         EulaStep => Kernel.EulaAccepted,
-        DownloadStep => Kernel.IsInstalled,
+        DownloadStep => Kernel.AllInstalled,
         DoneStep => false,
         _ => true
     };
@@ -98,7 +98,7 @@ public partial class KernelSetupWizardWindow : Window, INotifyPropertyChanged
 
     private void OnKernelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(KernelSetupViewModel.EulaAccepted) or nameof(KernelSetupViewModel.IsInstalled))
+        if (e.PropertyName is nameof(KernelSetupViewModel.EulaAccepted) or nameof(KernelSetupViewModel.AllInstalled))
             Raise(nameof(CanGoNext));
     }
 
@@ -106,13 +106,15 @@ public partial class KernelSetupWizardWindow : Window, INotifyPropertyChanged
 
     private void OnNextClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => GoTo(_step + 1);
 
-    private void OnFinishClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Close();
+    private void OnFinishClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) { Kernel.CompleteSetup(); Close(); }
 
     private void OnCancelClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Close();
 
     private void GoTo(int step)
     {
+        if (step > _step && !CanGoNext) return;
         _step = Math.Clamp(step, WelcomeStep, DoneStep);
+        if (_step == DownloadStep && !Kernel.AllInstalled && !Kernel.IsBusy) Kernel.DownloadCommand.Execute(null);
         Raise(nameof(IsWelcomeStep), nameof(IsEulaStep), nameof(IsDownloadStep), nameof(IsDoneStep),
             nameof(IsNotDoneStep), nameof(CanGoBack), nameof(CanGoNext),
             nameof(WelcomeStepWeight), nameof(EulaStepWeight), nameof(DownloadStepWeight), nameof(DoneStepWeight),

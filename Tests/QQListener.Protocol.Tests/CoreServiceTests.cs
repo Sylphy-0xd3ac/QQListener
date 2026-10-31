@@ -14,6 +14,46 @@ public class CoreServiceTests : IDisposable
 
     private static MapHandle Handle(int pid) => new((ulong)pid * 0x1000, (ulong)pid * 0x1000 + 0x100, 0, 0x3000);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SwitchingEnginesRequiresBothUnloadAndPipeDisappearance(bool lingeringPipe)
+    {
+        var loaded = false;
+        var unloaded = false;
+        using var service = new CoreService(enumeratePids: () => [11], findBinary: () => "hook.dll",
+            injectFunc: (pid, _) => { loaded = true; return Handle(pid); },
+            unloadFunc: (_, _) => unloaded = true, hookActive: _ => loaded && lingeringPipe,
+            recheckMainProcess: _ => true, supported: true);
+        service.Reconcile(CoreState.Running);
+        var blocked = service.StopForEngineSwitch();
+        Assert.True(unloaded);
+        Assert.Equal(lingeringPipe, blocked.Contains(11));
+    }
+
+    [Fact]
+    public async Task SwitchingDuringInjectionKeepsTheInFlightPidBlocked()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var service = new CoreService(enumeratePids: () => [11], findBinary: () => "hook.dll",
+            injectFunc: (pid, _) => { entered.Set(); release.Wait(); return Handle(pid); },
+            unloadFunc: (_, _) => { }, hookActive: _ => false, recheckMainProcess: _ => true,
+            stopTimeout: TimeSpan.FromMilliseconds(30), supported: true);
+        service.Start();
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
+            Assert.Contains(11, service.StopForEngineSwitch());
+        }
+        finally
+        {
+            release.Set();
+            await Task.Delay(100);
+            service.Stop();
+        }
+    }
+
     [Fact]
     public async Task HostStartupInjectsWithoutClickingLoad()
     {

@@ -29,11 +29,9 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
     private bool _providerProbed;
     private int _selectedEngineIndex;
     private bool _changingEngine;
-    public IReadOnlyList<string> EngineNames { get; } = ["SnowLuma", "PMHQ（实验性）"];
+    public IReadOnlyList<string> EngineNames { get; } = ["SnowLuma", "PMHQ"];
     public bool IsPmhqSelected => _settings.Engine == ListenerEngine.PMHQ;
-    public string EngineDescription => IsPmhqSelected
-        ? "PMHQ 首次使用时下载固定版本并应用内置补丁，无需启动凭证；尚未验证真实 QQ 发包。切换后需要重启 QQ。"
-        : "SnowLuma 为默认引擎。切换引擎后需要重启 QQ，避免同时装载不同钩子。";
+    public string EngineDescription => "切换时自动断开当前引擎；无法安全卸载时会提示重启 QQ。";
 
     public int SelectedEngineIndex
     {
@@ -87,8 +85,8 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
     public QqListenerSettingsPage(
         QqListenerSettings settings,
         QqListenerDiagnosticsState diagnostics,
-        QqListenerPluginInfo pluginInfo)
-        : this(settings, diagnostics, pluginInfo, true)
+        QqListenerPluginInfo pluginInfo, EngineInstallationService? installations = null)
+        : this(settings, diagnostics, pluginInfo, true, installations)
     {
     }
 
@@ -96,7 +94,7 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
         QqListenerSettings settings,
         QqListenerDiagnosticsState diagnostics,
         QqListenerPluginInfo pluginInfo,
-        bool autoSaveEnabled)
+        bool autoSaveEnabled, EngineInstallationService? installations = null)
     {
         _settings = settings;
         _selectedEngineIndex = (int)settings.Engine;
@@ -107,7 +105,7 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
         // 不一样的路径，会出现"向导显示安装成功，核心却永远找不到文件"的问题。
         KernelSetup = new KernelSetupViewModel(
             _settings,
-            QQListener.Core.KernelLocator.ResolveNativeDirectory(_settings.SettingsDirectory));
+            QQListener.Core.KernelLocator.ResolveNativeDirectory(_settings.SettingsDirectory), installations);
         DataContext = this;
         InitializeComponent();
 
@@ -142,26 +140,13 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
             PropertyChanged?.Invoke(this, new(name));
     }
 
-    private async Task ChangeEngineAsync(ListenerEngine engine)
+    private Task ChangeEngineAsync(ListenerEngine engine)
     {
         _changingEngine = true;
-        try
-        {
-            if (engine == _settings.Engine) return;
-            if (TopLevel.GetTopLevel(this) is not { } owner) return;
-            var dialog = new ContentDialog
-            {
-                Title = engine == ListenerEngine.PMHQ ? "PMHQ 是实验性功能" : "切换为 SnowLuma",
-                Content = engine == ListenerEngine.PMHQ
-                    ? "首次使用将从 PMHQ 官方下载 v9.0.6（约 14 MB），并应用内置补丁；可使用已配置的下载代理。无需 auth_token 或 manager。真实 QQ 注入、签名和发包尚未验证，可能无法接收消息或导致 QQ 异常。切换后请退出并重启 QQ。"
-                    : "切换后请退出并重启 QQ。旧进程退出前，插件会等待，不会向同一个 QQ 进程装载另一套钩子。",
-                PrimaryButtonText = "切换",
-                CloseButtonText = "取消"
-            };
-            if (await dialog.ShowAsync(owner) == ContentDialogResult.Primary) _settings.Engine = engine;
-        }
+        try { _settings.Engine = engine; }
         catch (Exception ex) { _diagnostics.RecordError(ex, "切换消息引擎失败"); }
         finally { _changingEngine = false; RefreshEngineSelection(); }
+        return Task.CompletedTask;
     }
 
     private void OnOpenPmhqConfigurationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -324,6 +309,13 @@ public partial class QqListenerSettingsPage : SettingsPageBase, INotifyPropertyC
             _diagnostics.RecordError(ex, "显示测试提醒失败");
             PreviewResultText = "显示测试提醒失败，请查看诊断信息";
         }
+    }
+
+    private void OnOpenEngineDownloadsClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var window = new EngineDownloadWindow(KernelSetup);
+        if (TopLevel.GetTopLevel(this) is Window owner) window.Show(owner); else window.Show();
+        KernelSetup.CheckUpdateCommand.Execute(null);
     }
 
     private void OnOpenKernelWizardClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

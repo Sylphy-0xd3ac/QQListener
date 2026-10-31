@@ -1,4 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project>
+    <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
     <PropertyGroup>
         <TargetFramework>$(QQListenerTargetFramework)</TargetFramework>
@@ -13,7 +14,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Remove="Samples\**\*.cs;Tests\**\*.cs;Tools\**\*.cs" />
+        <Compile Remove="Samples\**\*.cs;Tests\**\*.cs;Tools\**\*.cs;Bootstrap\**\*.cs" />
         <AvaloniaResource Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
         <AvaloniaXaml Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
         <Content Remove="Samples\**\*;Tests\**\*;Tools\**\*" />
@@ -22,13 +23,15 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="Bootstrap/QQListener.Loader.csproj" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="CreateCipx" AdditionalProperties="QQListenerTargetFramework=$(TargetFramework);EnableWindowsTargeting=$(EnableWindowsTargeting)" />
+        <EmbeddedResource Include="Assets/Updates/runtime-public.pem" LogicalName="QQListener.Updates.public.pem" />
         <PackageReference Include="ClassIsland.PluginSdk" Version="$(ClassIslandPluginSdkVersion)">
             <ExcludeAssets>runtime; native</ExcludeAssets>
         </PackageReference>
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Assets/PMHQ/win-x64/pmhq-v9.0.6-local-pipe.1.patch" LogicalName="QQListener.PMHQ.local-pipe.patch" />
+        <EmbeddedResource Include="Distribution/pmhq/9.0.6-local-pipe.1.json" LogicalName="QQListener.PMHQ.release.json" />
         <Content Include="Assets/Sounds/notify_sound.mp3"
                  CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets/Sounds/important_sound.mp3"
@@ -66,6 +69,13 @@
                Text="CIPX packages must target net8.0-windows10.0.19041.0." />
     </Target>
 
+    <Target Name="CopyPluginLoader" AfterTargets="Build" BeforeTargets="SyncLocalClassIslandDebugPlugin">
+        <ItemGroup>
+            <LoaderOutput Include="$(MSBuildProjectDirectory)/Bootstrap/bin/$(Configuration)/$(TargetFramework)/QQListener.Loader.dll;$(MSBuildProjectDirectory)/Bootstrap/bin/$(Configuration)/$(TargetFramework)/QQListener.Loader.deps.json" />
+        </ItemGroup>
+        <Copy SourceFiles="@(LoaderOutput)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    </Target>
+
     <Target Name="SyncLocalClassIslandDebugPlugin" AfterTargets="Build"
             Condition="'$(Configuration)' == 'Debug' and Exists('..\ClassIsland\ClassIsland.Desktop\bin\Debug\net8.0-windows10.0.19041.0')">
         <PropertyGroup>
@@ -84,4 +94,15 @@
                  Text="Synced QQListener debug build to $(LocalClassIslandPluginDir)" />
     </Target>
 
+    <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+    <!-- Override the SDK packer after its targets have been imported. -->
+    <Target Name="CreateCipx" AfterTargets="Build" DependsOnTargets="CopyPluginLoader" Condition="'$(CreateCipx)' == 'true'">
+        <PropertyGroup>
+            <PackageDotnetHost Condition="'$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</PackageDotnetHost>
+            <PackageDotnetHost Condition="'$(PackageDotnetHost)' == ''">dotnet</PackageDotnetHost>
+            <RuntimeBuildNumber Condition="'$(RuntimeBuildNumber)' == ''">0</RuntimeBuildNumber>
+        </PropertyGroup>
+        <Exec Command="&quot;$(PackageDotnetHost)&quot; run --project &quot;$(MSBuildProjectDirectory)/Tools/QQListener.PackageBuilder&quot; --configuration $(Configuration) -- &quot;$(MSBuildProjectDirectory)&quot; &quot;$(TargetDir).&quot; &quot;$(MSBuildProjectDirectory)/Bootstrap/bin/$(Configuration)/$(TargetFramework)&quot; &quot;$(QQListenerReleaseVersion)&quot; $(RuntimeBuildNumber)" />
+    </Target>
 </Project>

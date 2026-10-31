@@ -29,6 +29,7 @@ public sealed class CoreService : IDisposable
     // 远程调用超时后 ManualMapInjector 会故意保留目标内存不释放（回收会导致确定性崩溃），
     // 这个 pid 本次会话就不再重试注入了，避免每 2 秒往同一个卡住的进程里再泄漏一份镜像。
     private readonly HashSet<int> _stuckPids = [];
+    private readonly HashSet<int> _inFlightPids = [];
 
     private readonly ManualResetEventSlim _wake = new(true);
     private volatile bool _stopping;
@@ -134,6 +135,32 @@ public sealed class CoreService : IDisposable
         catch { /* 退出时卸载失败不阻塞关闭 */ }
     }
 
+    public IReadOnlyCollection<int> StopForEngineSwitch()
+    {
+        HashSet<int> owned;
+        HashSet<int> blocked;
+        lock (_gate)
+        {
+            owned = [.. _handles.Keys, .. _inFlightPids];
+            blocked = [.. _externalPids, .. _stuckPids];
+        }
+        Stop(unloadOwned: true);
+        lock (_gate)
+        {
+            blocked.UnionWith(_handles.Keys);
+            blocked.UnionWith(_inFlightPids);
+            blocked.UnionWith(_stuckPids);
+            if (_thread is { IsAlive: true }) blocked.UnionWith(owned);
+        }
+        // SnowLuma's own bridge checks pipe disappearance after unloading as well.
+        foreach (var pid in owned)
+        {
+            try { if (_recheckMainProcess(pid) && _hookActive(pid)) blocked.Add(pid); }
+            catch { blocked.Add(pid); }
+        }
+        return blocked;
+    }
+
     private void OnStateChanged(CoreState _) => _wake.Set();
 
     private void Run()
@@ -221,14 +248,18 @@ public sealed class CoreService : IDisposable
         var dllPath = _findBinary() ?? throw new FileNotFoundException(KernelLocator.MissingBinaryHelp());
         foreach (var pid in needsInjection)
         {
+            lock (_gate)
+            {
+                if (_stopping) break;
+                _inFlightPids.Add(pid);
+            }
             // enumeratePids 到这里之间已经过了一轮 hookActive 探测，足够旧进程退出、
             // pid 被系统回收给别的进程。紧邻 OpenProcess 之前再核实一次，把 TOCTOU
             // 窗口收到最窄——ManualMapInjector 内部把读盘解析 PE 的结果缓存住了，
             // 这里到真正 OpenProcess 之间不会再夹着那部分耗时。
-            if (!_recheckMainProcess(pid)) continue;
-
             try
             {
+                if (!_recheckMainProcess(pid)) continue;
                 var handle = _inject(pid, dllPath);
                 lock (_gate) _handles[pid] = handle;
                 // 注入返回到这里之间，NativeQqMessageSource 可能已经从 ActivePids
@@ -257,6 +288,7 @@ public sealed class CoreService : IDisposable
                 // 这个 pid 仍然不在 _handles 里，下一轮 Reconcile 会自然重试。
                 CoreRuntime.Set(CoreRuntimeState.Error, $"注入失败（pid={pid}）：{exc.Message}", pid);
             }
+            finally { lock (_gate) _inFlightPids.Remove(pid); }
         }
     }
 

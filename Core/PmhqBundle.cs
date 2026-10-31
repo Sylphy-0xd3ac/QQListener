@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+using QQListener.Updates;
 
 namespace QQListener.Core;
 
@@ -19,13 +20,45 @@ public sealed class PmhqBundle
         string DllHash, int DllLength, string PatchHash);
     private readonly Distribution _distribution;
     private readonly HttpClient _http;
-    private readonly Func<byte[]> _readPatch;
+    private readonly Func<byte[]>? _readPatch;
+    public PmhqRelease? Release { get; }
+    public string RuntimeVersion => Release?.RuntimeVersion ?? Version;
+    public PmhqLayout Layout => Release?.Layout ?? new(0xf56f1, 0xf31d8);
     private readonly string _root;
     public PmhqBundle(string nativeDirectory, HttpClient? httpClient = null)
-        : this(nativeDirectory, httpClient ?? SharedHttp,
-            new(ArchiveHash, OriginalHash, 1_034_752, DllHash, 1_076_224, PatchHash), ReadEmbeddedPatch) { }
+        : this(nativeDirectory, ReadInstalledRelease(nativeDirectory) ?? PinnedRelease, httpClient) { }
 
-    internal PmhqBundle(string nativeDirectory, HttpClient httpClient, Distribution distribution, Func<byte[]> readPatch)
+    public PmhqBundle(string nativeDirectory, PmhqRelease release, HttpClient? httpClient = null)
+        : this(nativeDirectory, httpClient ?? SharedHttp,
+            new(release.Archive.Sha256, release.OriginalSha256, release.OriginalSize,
+                release.OutputSha256, release.OutputSize, release.Patch.Sha256), null)
+    {
+        DistributionCatalog.Validate(release);
+        if (release.HostAbi != DistributionCatalog.HostAbi) throw new IOException("请先更新 QQListener 核心");
+        Release = release;
+    }
+
+    public static PmhqRelease PinnedRelease
+    {
+        get
+        {
+            using var stream = typeof(PmhqBundle).Assembly.GetManifestResourceStream("QQListener.PMHQ.release.json")
+                ?? throw new IOException("缺少 PMHQ 版本记录");
+            return JsonSerializer.Deserialize<PmhqRelease>(stream, DistributionCatalog.JsonOptions)!;
+        }
+    }
+
+    private static PmhqRelease? ReadInstalledRelease(string nativeDirectory)
+    {
+        var path = Path.Combine(nativeDirectory, "pmhq", "installed.json");
+        if (!File.Exists(path)) return null;
+        if (new FileInfo(path).Length > 16384) throw new IOException("PMHQ 版本记录过大");
+        return JsonSerializer.Deserialize<PmhqRelease>(File.ReadAllBytes(path), DistributionCatalog.JsonOptions);
+    }
+
+    public bool IsInstalled => Matches(BinaryPath, _distribution.DllHash, _distribution.DllLength);
+
+    internal PmhqBundle(string nativeDirectory, HttpClient httpClient, Distribution distribution, Func<byte[]>? readPatch)
     {
         _root = Path.Combine(nativeDirectory, "pmhq");
         _http = httpClient;
@@ -33,8 +66,8 @@ public sealed class PmhqBundle
         _readPatch = readPatch;
     }
     public string ConfigurationPath => Path.Combine(_root, "pmhq_config.json");
-    public string BinaryDirectory => Path.Combine(_root, Version);
-    internal string OriginalPath => Path.Combine(_root, "upstream-v9.0.6.dll");
+    public string BinaryDirectory => Path.Combine(_root, RuntimeVersion);
+    internal string OriginalPath => Path.Combine(_root, Release is null ? "upstream-v9.0.6.dll" : "upstream-" + Release.OriginalSha256 + ".dll");
     public string BinaryPath => Path.Combine(BinaryDirectory, "pmhq.dll");
     private string ResidentPath => Path.Combine(_root, "qq-session.json");
 
@@ -49,19 +82,32 @@ public sealed class PmhqBundle
         catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { return false; }
     }
 
-    public void RememberResidentHook(int pid, long processStartUtcTicks)
+    public bool HasBlockingResidentHook(int pid, long processStartUtcTicks, bool nativeEvidence)
+    {
+        if (nativeEvidence) return true;
+        if (!File.Exists(ResidentPath)) return false;
+        if (new FileInfo(ResidentPath).Length > 1024) throw new IOException("PMHQ 驻留记录损坏");
+        var marker = JsonSerializer.Deserialize<ResidentProcess>(File.ReadAllText(ResidentPath));
+        if (marker is null || marker.Pid != pid || marker.StartUtcTicks != processStartUtcTicks) return false;
+        // A timeout may still complete inside QQ. An ordinary/legacy marker alone is not evidence.
+        if (marker.Uncertain) return true;
+        File.Delete(ResidentPath);
+        return false;
+    }
+
+    public void RememberResidentHook(int pid, long processStartUtcTicks, bool uncertain = false)
     {
         Directory.CreateDirectory(_root);
         var temporary = ResidentPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(temporary, JsonSerializer.Serialize(new ResidentProcess(pid, processStartUtcTicks)));
+            File.WriteAllText(temporary, JsonSerializer.Serialize(new ResidentProcess(pid, processStartUtcTicks, uncertain)));
             File.Move(temporary, ResidentPath, true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private sealed record ResidentProcess(int Pid, long StartUtcTicks);
+    private sealed record ResidentProcess(int Pid, long StartUtcTicks, bool Uncertain = false);
 
     public void VerifyInstalled()
     {
@@ -69,42 +115,43 @@ public sealed class PmhqBundle
             throw new IOException("PMHQ 内核未准备好或校验失败，请重新检查并下载");
     }
 
-    public async Task PrepareAsync(string? proxy = null, CancellationToken ct = default)
+    public async Task PrepareAsync(string? proxy = null, CancellationToken ct = default, IProgress<DownloadProgress>? progress = null)
     {
         await InstallGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             ct.ThrowIfCancellationRequested();
             // Keep an existing reviewed DLL usable offline, including upgrades from beta.1.
-            if (Matches(BinaryPath, _distribution.DllHash, _distribution.DllLength)) return;
+            if (IsInstalled) { await SaveInstalledAsync(ct).ConfigureAwait(false); return; }
             Directory.CreateDirectory(BinaryDirectory);
             byte[] original;
             if (Matches(OriginalPath, _distribution.OriginalHash, _distribution.OriginalLength))
                 original = await File.ReadAllBytesAsync(OriginalPath, ct).ConfigureAwait(false);
             else
             {
-                original = await DownloadOriginalAsync(proxy, ct).ConfigureAwait(false);
+                original = await DownloadOriginalAsync(proxy, ct, progress).ConfigureAwait(false);
                 await WriteAtomicAsync(OriginalPath, original, ct).ConfigureAwait(false);
             }
             // Recheck bytes after reading: another process may have modified the cache.
             RequireHash(original, _distribution.OriginalHash, "原始 DLL");
-            var patch = _readPatch();
-            RequireHash(patch, _distribution.PatchHash, "内置补丁");
+            var patch = _readPatch is not null ? _readPatch() : await DownloadPatchAsync(proxy, ct, progress).ConfigureAwait(false);
+            RequireHash(patch, _distribution.PatchHash, "补丁");
             var patched = BinaryDelta.Apply(original, patch);
             if (patched.Length != _distribution.DllLength) throw new IOException("PMHQ 补丁输出长度不匹配");
             RequireHash(patched, _distribution.DllHash, "补丁结果");
             await WriteAtomicAsync(BinaryPath, patched, ct).ConfigureAwait(false);
+            await SaveInstalledAsync(ct).ConfigureAwait(false);
         }
         finally { InstallGate.Release(); }
     }
 
-    private async Task<byte[]> DownloadOriginalAsync(string? proxy, CancellationToken ct)
+    private async Task<byte[]> DownloadOriginalAsync(string? proxy, CancellationToken ct, IProgress<DownloadProgress>? progress)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromMinutes(5));
         var token = timeout.Token;
         using var request = new HttpRequestMessage(HttpMethod.Get,
-            KernelInstaller.ApplyProxy(DownloadUrl, string.IsNullOrWhiteSpace(proxy) ? null : proxy.Trim()));
+            KernelInstaller.ApplyProxy(Release?.Archive.Url ?? DownloadUrl, string.IsNullOrWhiteSpace(proxy) ? null : proxy.Trim()));
         request.Headers.UserAgent.ParseAdd("QQListener-ClassIsland-Plugin/2.3");
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -118,8 +165,10 @@ public sealed class PmhqBundle
         {
             if (bytes.Length + read > MaxDownloadBytes) throw new IOException("PMHQ 下载内容超过 32 MiB 上限");
             bytes.Write(buffer, 0, read);
+            progress?.Report(new("下载 PMHQ", bytes.Length, response.Content.Headers.ContentLength));
         }
         RequireHash(bytes.ToArray(), _distribution.ArchiveHash, "官方下载包");
+        if (Release is not null && bytes.Length != Release.Archive.Size) throw new IOException("PMHQ 下载包长度不匹配");
         bytes.Position = 0;
         using var archive = new ZipArchive(bytes, ZipArchiveMode.Read);
         var entries = archive.Entries.Where(e => e.FullName == "pmhq.dll").ToArray();
@@ -134,13 +183,23 @@ public sealed class PmhqBundle
         return original;
     }
 
-    private static byte[] ReadEmbeddedPatch()
+    private async Task<byte[]> DownloadPatchAsync(string? proxy, CancellationToken ct, IProgress<DownloadProgress>? progress)
     {
-        using var resource = typeof(PmhqBundle).Assembly.GetManifestResourceStream("QQListener.PMHQ.local-pipe.patch")
-            ?? throw new IOException("插件包缺少 PMHQ 补丁，请重新安装插件");
-        using var bytes = new MemoryStream();
-        resource.CopyTo(bytes);
-        return bytes.ToArray();
+        var asset = Release!.Patch;
+        var path = Path.Combine(_root, asset.Sha256 + ".patch");
+        if (Matches(path, asset.Sha256, asset.Size)) return await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+        var bytes = await new DistributionClient(_http).AssetAsync(asset, proxy, ct, progress, "准备 PMHQ").ConfigureAwait(false);
+        await WriteAtomicAsync(path, bytes, ct).ConfigureAwait(false);
+        return bytes;
+    }
+
+    private Task SaveInstalledAsync(CancellationToken ct)
+    {
+        if (Release is null) return Task.CompletedTask;
+        var current = ReadInstalledRelease(Path.GetDirectoryName(_root)!);
+        if (current is not null && ReleaseVersionComparer.Instance.Compare(current.RuntimeVersion, Release.RuntimeVersion) > 0)
+            return Task.CompletedTask;
+        return DistributionClient.WriteAtomicAsync(Path.Combine(_root, "installed.json"), JsonSerializer.SerializeToUtf8Bytes(Release), ct);
     }
 
     private static async Task WriteAtomicAsync(string path, byte[] bytes, CancellationToken ct)

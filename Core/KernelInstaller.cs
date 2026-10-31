@@ -225,11 +225,12 @@ public sealed class KernelInstaller(string nativeDir, HttpClient? httpClient = n
 
     /// <summary>从官方 release 下载并安装核心二进制，返回安装的版本号。</summary>
     public async Task<string> DownloadAndInstallAsync(
-        string? proxy = null, string platform = DefaultPlatform, CancellationToken ct = default)
+        string? proxy = null, string platform = DefaultPlatform, CancellationToken ct = default,
+        IProgress<QQListener.Updates.DownloadProgress>? progress = null)
     {
         var release = await LatestReleaseAsync(platform, proxy, ct).ConfigureAwait(false);
         var downloadUrl = ApplyProxy(release.AssetUrl, proxy);
-        var zipBytes = await DownloadCappedAsync(downloadUrl, ct).ConfigureAwait(false);
+        var zipBytes = await DownloadCappedAsync(downloadUrl, ct, progress).ConfigureAwait(false);
 
         var installed = ExtractCoreBinaries(zipBytes, NativeDir);
         if (installed.Count == 0)
@@ -242,7 +243,7 @@ public sealed class KernelInstaller(string nativeDir, HttpClient? httpClient = n
     /// <summary>流式下载并按 <see cref="MaxDownloadBytes"/> 限流——之前用
     /// <c>GetByteArrayAsync</c> 把整个响应体读进内存，一个损坏/恶意的代理返回
     /// 一个巨大的 body 就能把宿主进程 OOM，没有任何上限。</summary>
-    private async Task<byte[]> DownloadCappedAsync(string url, CancellationToken ct)
+    private async Task<byte[]> DownloadCappedAsync(string url, CancellationToken ct, IProgress<QQListener.Updates.DownloadProgress>? progress)
     {
         // ResponseHeadersRead 下 HttpClient.Timeout 不覆盖后续流读取，慢速代理
         // 下载几十 MB 的包很容易超过默认的 100 秒；用独立超时兜住整个读取阶段。
@@ -270,6 +271,7 @@ public sealed class KernelInstaller(string nativeDir, HttpClient? httpClient = n
             if (total > MaxDownloadBytes)
                 throw new IOException($"下载内容超过大小上限（{MaxDownloadBytes / 1024 / 1024} MiB）");
             buffer.Write(chunk, 0, read);
+            progress?.Report(new("下载 SnowLuma", total, contentLength));
         }
         return buffer.ToArray();
     }

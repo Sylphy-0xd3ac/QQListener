@@ -6,7 +6,6 @@
 
 - .NET 8 SDK，具体版本与滚动策略由 [global.json](global.json) 指定。
 - Windows x64、NT QQ 与 ClassIsland，用于真实消息收发和宿主集成验证。
-- PowerShell 7（`pwsh`），用于打包阶段生成校验文件。
 
 普通构建和测试按当前平台选择目标。macOS、Linux 上可以运行跨平台测试和离线界面预览，但不支持原生 QQ 捕获。
 
@@ -28,7 +27,7 @@ dotnet run --project Samples/QQListener.UiPreview/QQListener.UiPreview.csproj -c
 
 图片协议的独立交叉对照数据及再生成方法见 [Fixtures](Tests/QQListener.Protocol.Tests/Fixtures/README.md)。
 
-双引擎的传输、会话隔离、内置文件身份及上游对照见 [review 记录](docs/reviews/dual-engine.md)。PMHQ 本地签名补丁源码位于 `Tools/PMHQ.LocalSign/`；它的原始 Rust 内核源码不在本仓库。
+双引擎的传输、会话隔离、分发文件身份及上游对照见 [review 记录](docs/reviews/dual-engine.md)。PMHQ 本地签名补丁源码位于 `Tools/PMHQ.LocalSign/`；它的原始 Rust 内核源码不在本仓库。
 
 当前 PMHQ 引擎使用 `PmhqLocalClient`，不运行原 EXE 或 HTTP/WS 服务。`PmhqClient` 与 SampleVerifier 的 `--pmhq-smoke` 仅保留为官方 HTTP 接口的开发对照，不参与插件运行。原生本机初始化及命令管道的隔离验证边界见 review 记录；真实 QQ 收发仍需 Windows 验收。
 
@@ -91,3 +90,21 @@ bash Tests/Release/run.sh
 - `Services/`：规则处理、消息队列、提醒生命周期与附件下载。
 - `Views/`：设置页面和消息窗口。
 - `Tests/`：协议、模型、服务与发布校验测试。
+
+## Loader 与核心分发
+
+`Bootstrap/QQListener.Loader.csproj` 是 manifest 入口，`QQListener.dll` 保留业务逻辑和 Avalonia 资源。Loader 与核心通过 `InitializeCore` ABI 1 连接，ClassIsland / Avalonia / DI 合同由宿主共享，业务依赖从独立目录解析。核心初始化只能在宿主建立服务容器前执行；运行期间下载的更新在下次启动应用。
+
+`-p:CreateCipx=true` 调用 `Tools/QQListener.PackageBuilder`，同时输出：
+
+- `cipx/QQListener.cipx`：Loader 与内置核心。
+- `cipx/QQListener.Download.cipx`：仅 Loader。
+- `cipx/QQListener.Core.zip` 和 `core-release.json`：核心独立发布输入。
+
+main 构建在双平台检查通过后由 `Tools/PublishRuntime.sh` 发布到本仓库 `runtime-builds` prerelease。核心资源按 SHA-256 命名，清单按构建编号排序，禁止较旧的并发构建覆盖较新版本。公开 Release 资源支持匿名客户端；Actions artifacts 仍用于 CI 作业间传递。
+
+仓库 Secret `RUNTIME_SIGNING_KEY` 保存 P-256 私钥；公钥为 `Assets/Updates/runtime-public.pem`。私钥不得提交到 Git。更新清单使用 SHA-256 / ECDSA DER 签名，代理只负责传输。轮换公钥需要先发布带有新信任根的 Loader。
+
+新增 PMHQ 适配时，在 `Distribution/pmhq/` 增加版本 JSON，并将补丁加入 `Assets/PMHQ/win-x64/pmhq-v<RuntimeVersion>.patch`。JSON 包含上游包、原始 DLL、补丁及输出哈希、长度、宿主 ABI 和内存布局。CI 发布这些文件，但不会把补丁嵌入核心程序集。没有匹配记录的上游版本不会自动安装。
+
+持久化结构：`runtime/versions/<sha256>/` 为已验证文件，旁边保存对应原始 ZIP；`active.json`、`pending.json`、`previous.json` 记录版本指针，`rejected/` 记录加载失败的构建。安装使用临时目录与原子移动，启动时重新校验原始包和文件清单。原生内核仍位于 `native/`，与托管核心更新独立。

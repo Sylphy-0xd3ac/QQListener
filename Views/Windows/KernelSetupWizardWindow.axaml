@@ -31,20 +31,22 @@
 
                 <!-- Step 0: 说明 -->
                 <StackPanel Spacing="10" IsVisible="{Binding IsWelcomeStep}">
-                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="原生捕获需要 SnowLuma 内核" />
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="安装消息引擎" />
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                        QQListener 用 SnowLuma 的注入技术直接读取 QQ 的私有消息协议，
-                        不再轮询 Windows 通知中心的弹窗文本，能拿到图片、文件、引用、@ 等完整信息。
+                        QQListener 支持 SnowLuma 和 PMHQ，安装完成后可以在内核管理中切换。
+                        接收 QQ 消息中的文字、图片、文件、引用和 @ 信息。
                     </TextBlock>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                        SnowLuma 内核是一个独立的专有二进制，本插件不打包、不分发它，
+                        向导默认安装 SnowLuma 和 PMHQ。SnowLuma 作为独立内核，
                         只会在你同意协议后，从 SnowLuma 的官方 GitHub Release 下载安装。
-                        加速下载用的代理地址完全由你自己填，程序不内置、不自建镜像。
+                        可配置 ghproxy 加速下载，留空则直接连接 GitHub。
                     </TextBlock>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                FontSize="12">
-                        仅支持 Windows x64；其余平台看不到这个向导。
+                        需要 Windows x64 和已登录的 NT QQ。
                     </TextBlock>
+                    <TextBlock Text="下载代理（可选）" />
+                    <TextBox Text="{Binding Kernel.DownloadProxy}" Watermark="https://你的 ghproxy 地址" />
                 </StackPanel>
 
                 <!-- Step 1: 协议 -->
@@ -69,10 +71,10 @@
                 <StackPanel Spacing="10" IsVisible="{Binding IsDownloadStep}">
                     <TextBlock FontSize="18" FontWeight="SemiBold" Text="下载并安装内核" />
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6" ColumnSpacing="8">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="当前版本" VerticalAlignment="Center" />
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="SnowLuma 已安装" VerticalAlignment="Center" />
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Kernel.CurrentVersionText}"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="最新版本" VerticalAlignment="Center" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="SnowLuma 最新" VerticalAlignment="Center" />
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Kernel.LatestVersionText}"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </Grid>
@@ -81,8 +83,15 @@
                     <TextBlock Text="下载加速代理（可选；留空直接访问官方地址）"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <TextBox Text="{Binding Kernel.DownloadProxy}" Watermark="https://ghfast.top" />
-                    <Button Content="下载并安装" Command="{Binding Kernel.DownloadCommand}"
+                    <Button Content="安装 SnowLuma 和 PMHQ" Command="{Binding Kernel.DownloadCommand}"
                             IsEnabled="{Binding Kernel.IsNotBusy}" />
+                    <TextBlock Text="PMHQ" FontWeight="SemiBold" />
+                    <TextBlock><Run Text="已安装：" /><Run Text="{Binding Kernel.PmhqCurrentVersion}" /><Run Text="　最新：" /><Run Text="{Binding Kernel.PmhqLatestVersion}" /></TextBlock>
+                    <ProgressBar Value="{Binding Kernel.SnowDownloadProgress}" Minimum="0" Maximum="100" />
+                    <TextBlock Text="{Binding Kernel.SnowDownloadStatus}" TextWrapping="Wrap" />
+                    <ProgressBar Value="{Binding Kernel.PmhqDownloadProgress}" Minimum="0" Maximum="100" />
+                    <TextBlock Text="{Binding Kernel.PmhqDownloadStatus}" TextWrapping="Wrap" />
+                    <Button Content="取消下载" Command="{Binding Kernel.CancelDownloadCommand}" />
                     <TextBlock Text="{Binding Kernel.StatusText}" TextWrapping="Wrap" />
                 </StackPanel>
 

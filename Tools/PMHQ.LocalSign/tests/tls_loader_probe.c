@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef _MSC_VER
+#include <intrin.h>
+#define _Thread_local __declspec(thread)
+#endif
 
 /* Pinned v9.0.6 only. No QQ injection or real hooks (PMHQ_SRDI_TEST). */
 static unsigned char *image;
@@ -20,7 +24,11 @@ static void check_tls(unsigned id) {
     IMAGE_TLS_DIRECTORY64 *tls=(void *)(image+nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress);
     DWORD index=*(DWORD *)(uintptr_t)tls->AddressOfIndex;
     void **slots;
+#ifdef _MSC_VER
+    slots=(void **)(uintptr_t)__readgsqword(0x58);
+#else
     __asm__("movq %%gs:0x58, %0" : "=r"(slots));
+#endif
     if(tls->EndAddressOfRawData-tls->StartAddressOfRawData!=136
         || tls->AddressOfIndex-(uintptr_t)image!=0xf59c0 || index==_tls_index || !slots[index]) {
         InterlockedIncrement(&failures);return;

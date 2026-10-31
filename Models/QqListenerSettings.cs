@@ -150,6 +150,16 @@ public partial class QqListenerSettings : ObservableObject
     [ObservableProperty]
     private string _kernelDownloadProxy = "";
 
+    [ObservableProperty]
+    private bool _kernelSetupPrompted;
+
+    [ObservableProperty]
+    private bool _kernelSetupCompleted;
+
+    [ObservableProperty]
+    private bool _autoUpdateEngines = true;
+
+
     [JsonIgnore]
     public IReadOnlyList<string> ImportantPersons => SplitLines(ImportantPersonsText);
 
